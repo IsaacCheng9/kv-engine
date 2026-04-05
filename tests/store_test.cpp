@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 namespace kv {
 namespace {
 
@@ -69,6 +71,22 @@ TEST(StoreTest, ContainsFindsKey) {
 TEST(StoreTest, ContainsDoesNotFindMissingKey) {
   Store store;
   EXPECT_FALSE(store.contains("missing"));
+}
+
+TEST(StoreTest, GetsAllKeys) {
+  Store store;
+  store.put("key1", "value1");
+  store.put("key2", "value2");
+  auto keys = store.keys();
+  EXPECT_EQ(keys.size(), 2);
+  EXPECT_NE(std::find(keys.begin(), keys.end(), "key1"), keys.end());
+  EXPECT_NE(std::find(keys.begin(), keys.end(), "key2"), keys.end());
+}
+
+TEST(StoreTest, KeysEmptyWhenStoreIsEmpty) {
+  Store store;
+  auto keys = store.keys();
+  EXPECT_TRUE(keys.empty());
 }
 
 } // namespace
