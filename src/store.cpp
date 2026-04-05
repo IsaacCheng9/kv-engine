@@ -18,4 +18,8 @@ bool Store::remove(const std::string &key) { return data_.erase(key) > 0; }
 
 std::size_t Store::size() const { return data_.size(); }
 
+bool Store::contains(const std::string &key) const {
+  return data_.find(key) != data_.end();
+}
+
 } // namespace kv

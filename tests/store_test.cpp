@@ -50,5 +50,16 @@ TEST(StoreTest, Size) {
   EXPECT_EQ(store.size(), 1);
 }
 
+TEST(StoreTest, ContainsFindsKey) {
+  Store store;
+  store.put("key1", "value1");
+  EXPECT_TRUE(store.contains("key1"));
+}
+
+TEST(StoreTest, ContainsDoesNotFindMissingKey) {
+  Store store;
+  EXPECT_FALSE(store.contains("missing"));
+}
+
 } // namespace
 } // namespace kv
