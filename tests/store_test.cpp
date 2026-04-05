@@ -40,6 +40,16 @@ TEST(StoreTest, RemoveMissingKey) {
   EXPECT_FALSE(store.remove("missing"));
 }
 
+TEST(StoreTest, Clear) {
+  Store store;
+  store.put("key1", "value1");
+  store.put("key2", "value2");
+  store.clear();
+  EXPECT_FALSE(store.get("key1").has_value());
+  EXPECT_FALSE(store.get("key2").has_value());
+  EXPECT_EQ(store.size(), 0);
+}
+
 TEST(StoreTest, Size) {
   Store store;
   EXPECT_EQ(store.size(), 0);
