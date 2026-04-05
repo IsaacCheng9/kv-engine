@@ -1,0 +1,20 @@
+name: Test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -DSANITISE=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure
