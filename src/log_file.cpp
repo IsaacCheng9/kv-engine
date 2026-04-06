@@ -48,9 +48,9 @@ std::vector<std::string> LogFile::read_all() {
 
     std::string entry(length, '\0');
     auto data_bytes_read = read(fd_, entry.data(), entry.size());
-    if (data_bytes_read > length) {
-      throw std::runtime_error(
-          "Read was truncated - bytes read > length expected");
+    if (data_bytes_read < static_cast<ssize_t>(length)) {
+      throw std::runtime_error("Truncated read: expected " +
+                               std::to_string(length) + " bytes");
     }
     entries.push_back(std::move(entry));
   }
