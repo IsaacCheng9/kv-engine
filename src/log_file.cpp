@@ -19,13 +19,13 @@ LogFile::~LogFile() { close(fd_); }
 
 void LogFile::append(std::string_view data) {
   uint32_t length_prefix = data.size();
-  auto length_success = write(fd_, &length_prefix, sizeof(length_prefix));
-  if (length_success == -1) {
+  auto length_bytes_written = write(fd_, &length_prefix, sizeof(length_prefix));
+  if (length_bytes_written == -1) {
     throw std::runtime_error("Failed to write length prefix");
   }
 
-  auto data_success = write(fd_, data.data(), data.size());
-  if (data_success == -1) {
+  auto data_bytes_written = write(fd_, data.data(), data.size());
+  if (data_bytes_written == -1) {
     throw std::runtime_error("Failed to write data");
   }
 
