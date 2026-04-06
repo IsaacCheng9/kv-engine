@@ -12,7 +12,7 @@ public:
   ~LogFile();
 
   void append(std::string_view data);
-  std::vector<std::string> read_all() const;
+  std::vector<std::string> read_all();
 
 private:
   int fd_;

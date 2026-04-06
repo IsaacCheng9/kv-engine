@@ -1,9 +1,12 @@
 #include "log_file.hpp"
 #include <cstdint>
+#include <cstdio>
 #include <fcntl.h>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <unistd.h>
+#include <vector>
 
 namespace kv {
 
@@ -30,6 +33,29 @@ void LogFile::append(std::string_view data) {
   }
 
   fsync(fd_);
+}
+
+std::vector<std::string> LogFile::read_all() {
+  lseek(fd_, 0, SEEK_SET);
+  std::vector<std::string> entries;
+
+  while (true) {
+    uint32_t length = 0;
+    auto length_bytes_read = read(fd_, &length, sizeof(length));
+    if (length_bytes_read == 0) {
+      break;
+    }
+
+    std::string entry(length, '\0');
+    auto data_bytes_read = read(fd_, entry.data(), entry.size());
+    if (data_bytes_read > length) {
+      throw std::runtime_error(
+          "Read was truncated - bytes read > length expected");
+    }
+    entries.push_back(std::move(entry));
+  }
+
+  return entries;
 }
 
 } // namespace kv
