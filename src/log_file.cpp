@@ -1,4 +1,5 @@
 #include "log_file.hpp"
+#include <cstdint>
 #include <fcntl.h>
 #include <stdexcept>
 #include <string_view>
