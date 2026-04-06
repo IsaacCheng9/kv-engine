@@ -2,6 +2,6 @@
 name = "cz_conventional_commits"
 version = "0.1.0"
 version_files = [
-    "CMakeLists.txt:project(kv_engine VERSION"
+    "CMakeLists.txt:project\\(kv_engine VERSION"
 ]
 tag_format = "$version"
