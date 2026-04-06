@@ -39,3 +39,17 @@
 
 # debug information files
 *.dwo
+
+# Build directories
+build/
+cmake-build-*/
+
+# IDE
+.cache/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
