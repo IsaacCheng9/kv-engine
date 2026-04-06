@@ -16,6 +16,7 @@ endif()
 # Library
 add_library(kv_engine
     src/store.cpp
+    src/log_file.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
 
@@ -34,6 +35,7 @@ FetchContent_MakeAvailable(googletest)
 # Tests
 enable_testing()
 add_executable(kv_engine_tests
+    tests/log_file_test.cpp
     tests/store_test.cpp
 )
 target_link_libraries(kv_engine_tests PRIVATE kv_engine GTest::gtest_main)
