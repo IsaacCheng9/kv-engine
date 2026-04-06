@@ -34,5 +34,13 @@ TEST(LogFileTest, AppendedEntriesAreReadBack) {
   EXPECT_EQ(actual_entries, expected_entries);
   std::remove(path.c_str());
 }
+
+TEST(LogFileTest, ReadsEmptyVectorForEmptyLogs) {
+  const std::string path = "/tmp/kv_log_file_empty";
+  LogFile log_file(path);
+  std::vector<std::string> actual_entries = log_file.read_all();
+  EXPECT_TRUE(actual_entries.empty());
+  std::remove(path.c_str());
+}
 } // namespace
 } // namespace kv
