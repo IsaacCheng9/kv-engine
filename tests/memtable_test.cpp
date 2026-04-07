@@ -51,5 +51,17 @@ TEST(MemtableTest, IteratorYieldsKeysInSortedOrder) {
   ++iterator;
   EXPECT_EQ(iterator, memtable.end());
 }
+
+TEST(MemtableTest, IsFullReturnsTrueWhenSizeExceedsMax) {
+  Memtable memtable(10);
+  memtable.put("key1", "value1"); // 10 bytes
+  EXPECT_TRUE(memtable.is_full());
+}
+
+TEST(MemtableTest, IsFullReturnsFalseWhenSizeIsBelowMax) {
+  Memtable memtable(11);
+  memtable.put("key1", "value1"); // 10 bytes
+  EXPECT_FALSE(memtable.is_full());
+}
 } // namespace
 } // namespace kv
