@@ -12,6 +12,9 @@ public:
   void put(const std::string &key, const std::string &value);
   std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
+  auto begin() const { return data_.begin(); }
+  auto end() const { return data_.end(); }
+  std::size_t size() const { return data_.size(); }
 
 private:
   std::map<std::string, std::optional<std::string>> data_;
