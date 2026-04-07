@@ -3,6 +3,7 @@
 
 #include <map>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 
 namespace kv {
@@ -23,6 +24,7 @@ private:
   std::map<std::string, std::optional<std::string>> data_;
   std::size_t max_size_;
   std::size_t current_size_ = 0;
+  mutable std::shared_mutex mutex_;
 };
 } // namespace kv
 
