@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace kv {
+
 class LogFile {
 public:
   explicit LogFile(const std::string &path);
