@@ -1,5 +1,6 @@
 #include "memtable.hpp"
 #include <map>
+#include <mutex>
 #include <optional>
 #include <string>
 
