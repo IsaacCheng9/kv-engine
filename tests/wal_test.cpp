@@ -1,8 +1,10 @@
+#include "memtable.hpp"
 #include "wal.hpp"
 #include <cstdio>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <stdexcept>
+#include <unistd.h>
 
 namespace kv {
 
@@ -84,6 +86,39 @@ TEST(WALTest, ReplayOnEmptyFile) {
   }
 
   EXPECT_TRUE(memtable.get("anykey").has_value() == false);
+
+  std::remove(path.c_str());
+}
+
+TEST(WALTest, ReplayWithCorruptedRecord) {
+  const std::string path = "/tmp/kv_wal_corrupted_replay";
+  {
+    WAL wal(path);
+    wal.log_put("key1", "value1");
+    wal.log_put("key2", "value2");
+    wal.log_remove("key1");
+  }
+
+  // Corrupt the file by truncating the last 10 bytes.
+  {
+    auto file_size = std::filesystem::file_size(path);
+    truncate(path.c_str(), file_size - 10);
+  }
+
+  Memtable memtable;
+  {
+    WAL wal(path);
+    EXPECT_NO_THROW(wal.replay(memtable));
+  }
+
+  // We should have successfully replayed the first two records, but not the
+  // corrupted remove record.
+  auto value1 = memtable.get("key1");
+  ASSERT_TRUE(value1.has_value());
+  EXPECT_EQ(value1.value(), "value1");
+  auto value2 = memtable.get("key2");
+  ASSERT_TRUE(value2.has_value());
+  EXPECT_EQ(value2.value(), "value2");
 
   std::remove(path.c_str());
 }
