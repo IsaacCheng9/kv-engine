@@ -1,11 +1,12 @@
 #ifndef KV_ENGINE_WAL_HPP
 #define KV_ENGINE_WAL_HPP
 
-#include "memtable.hpp"
 #include <string>
 #include <string_view>
 
 namespace kv {
+
+class Memtable;
 
 class WAL {
 public:
