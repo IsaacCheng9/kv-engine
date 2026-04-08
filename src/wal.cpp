@@ -1,6 +1,8 @@
 #include "wal.hpp"
+#include "memtable.hpp"
 #include <cstdint>
 #include <fcntl.h>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -108,4 +110,78 @@ void WAL::log_remove(std::string_view key) {
   fsync(fd_);
 }
 
+void WAL::replay(Memtable &memtable) {
+  lseek(fd_, 0, SEEK_SET);
+
+  while (true) {
+    // Compute the checksum so we can compare it to the stored checksum at the
+    // end of the record. This allows us to detect if a record is truncated due
+    // to a crash during write.
+    uint32_t checksum = 0;
+
+    uint8_t op_type;
+    auto op_type_bytes_read = read(fd_, &op_type, sizeof(op_type));
+    if (op_type_bytes_read == 0) {
+      break;
+    }
+    checksum = update_crc(checksum, &op_type, sizeof(op_type));
+
+    uint32_t key_length;
+    auto key_length_bytes_read = read(fd_, &key_length, sizeof(key_length));
+    if (key_length_bytes_read == 0) {
+      break;
+    }
+    checksum = update_crc(checksum, &key_length, sizeof(key_length));
+
+    std::string key(key_length, '\0');
+    auto key_data_bytes_read = read(fd_, key.data(), key.size());
+    if (key_data_bytes_read < static_cast<ssize_t>(key_length)) {
+      break;
+    }
+    checksum = update_crc(checksum, key.data(), key.size());
+
+    // Only put operations include a value.
+    if (op_type == 0x01) {
+      uint32_t value_length;
+      auto value_length_bytes_read =
+          read(fd_, &value_length, sizeof(value_length));
+      if (value_length_bytes_read == 0) {
+        break;
+      }
+      checksum = update_crc(checksum, &value_length, sizeof(value_length));
+
+      std::string value(value_length, '\0');
+      auto value_data_bytes_read = read(fd_, value.data(), value.size());
+      if (value_data_bytes_read < static_cast<ssize_t>(value_length)) {
+        break;
+      }
+      checksum = update_crc(checksum, value.data(), value.size());
+
+      // Read and verify checksum.
+      uint32_t stored_checksum;
+      read(fd_, &stored_checksum, sizeof(stored_checksum));
+      if (checksum != stored_checksum) {
+        std::cerr
+            << "WAL replay: checksum mismatch, stopping at corrupt node.\n";
+        break;
+      }
+
+      memtable.put(std::move(key), std::move(value));
+    } else if (op_type == 0x02) {
+      // Read and verify checksum.
+      uint32_t stored_checksum;
+      read(fd_, &stored_checksum, sizeof(stored_checksum));
+      if (checksum != stored_checksum) {
+        std::cerr
+            << "WAL replay: checksum mismatch, stopping at corrupt node.\n";
+        break;
+      }
+
+      memtable.remove(std::move(key));
+    } else {
+      throw std::runtime_error("Unknown operation type in WAL: " +
+                               std::to_string(op_type));
+    }
+  }
+}
 } // namespace kv
