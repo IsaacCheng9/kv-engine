@@ -18,8 +18,10 @@ add_library(kv_engine
     src/store.cpp
     src/log_file.cpp
     src/memtable.cpp
+    src/wal.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
+target_link_libraries(kv_engine PRIVATE z)
 
 # Compiler warnings (applied to our code only, not dependencies)
 target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -39,6 +41,7 @@ add_executable(kv_engine_tests
     tests/log_file_test.cpp
     tests/memtable_test.cpp
     tests/store_test.cpp
+    tests/wal_test.cpp
 )
 target_link_libraries(kv_engine_tests PRIVATE kv_engine GTest::gtest_main)
 target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
