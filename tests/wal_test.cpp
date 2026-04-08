@@ -48,5 +48,44 @@ TEST(WALTest, FileGrowsAfterWrites) {
   std::remove(path.c_str());
 }
 
+TEST(WALTest, ReplayGeneratesCorrectMemtable) {
+  const std::string path = "/tmp/kv_wal_replay";
+  {
+    WAL wal(path);
+    wal.log_put("key1", "value1");
+    wal.log_put("key2", "value2");
+    wal.log_remove("key1");
+  }
+
+  Memtable memtable;
+  {
+    WAL wal(path);
+    wal.replay(memtable);
+  }
+
+  EXPECT_FALSE(memtable.get("key1").has_value());
+  auto value2 = memtable.get("key2");
+  ASSERT_TRUE(value2.has_value());
+  EXPECT_EQ(value2.value(), "value2");
+
+  std::remove(path.c_str());
+}
+
+TEST(WALTest, ReplayOnEmptyFile) {
+  const std::string path = "/tmp/kv_wal_empty_replay";
+  {
+    WAL wal(path);
+  }
+
+  Memtable memtable;
+  {
+    WAL wal(path);
+    EXPECT_NO_THROW(wal.replay(memtable));
+  }
+
+  EXPECT_TRUE(memtable.get("anykey").has_value() == false);
+
+  std::remove(path.c_str());
+}
 } // namespace
 } // namespace kv
