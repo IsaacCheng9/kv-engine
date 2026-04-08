@@ -21,6 +21,7 @@ add_library(kv_engine
     src/wal.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
+target_link_libraries(kv_engine PRIVATE z)
 
 # Compiler warnings (applied to our code only, not dependencies)
 target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)

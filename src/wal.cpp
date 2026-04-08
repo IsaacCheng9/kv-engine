@@ -5,6 +5,13 @@
 #include <string>
 #include <string_view>
 #include <unistd.h>
+#include <zlib.h>
+
+namespace {
+uint32_t update_crc(uint32_t crc, const void *data, std::size_t size) {
+  return crc32(crc, static_cast<const Bytef *>(data), size);
+}
+} // namespace
 
 namespace kv {
 
@@ -19,6 +26,7 @@ WAL::WAL(const std::string &path) {
 WAL::~WAL() { close(fd_); }
 
 void WAL::log_put(std::string_view key, std::string_view value) {
+
   static constexpr uint8_t put_op = 0x01;
   auto put_op_bytes_written = write(fd_, &put_op, sizeof(put_op));
   if (put_op_bytes_written == -1) {
@@ -47,6 +55,24 @@ void WAL::log_put(std::string_view key, std::string_view value) {
     throw std::runtime_error("Failed to write data for value");
   }
 
+  // Detect corruption. If the process crashes mid-write (e.g. power failure),
+  // a record could be partially written - the key might be there but the value
+  // is truncated. During replay, the reader recomputes the CRC over the record
+  // data and compares it to the stored checksum. If they don't match, the
+  // record corrupt and the replay stops there.
+  uint32_t checksum = 0;
+  checksum = update_crc(checksum, &put_op, sizeof(put_op));
+  checksum =
+      update_crc(checksum, &key_length_prefix, sizeof(key_length_prefix));
+  checksum = update_crc(checksum, key.data(), key.size());
+  checksum =
+      update_crc(checksum, &value_length_prefix, sizeof(value_length_prefix));
+  checksum = update_crc(checksum, value.data(), value.size());
+  auto checksum_bytes_written = write(fd_, &checksum, sizeof(checksum));
+  if (checksum_bytes_written == -1) {
+    throw std::runtime_error("Failed to write checksum for log put");
+  }
+
   fsync(fd_);
 }
 
@@ -67,6 +93,16 @@ void WAL::log_remove(std::string_view key) {
   auto key_data_bytes_written = write(fd_, key.data(), key.size());
   if (key_data_bytes_written == -1) {
     throw std::runtime_error("Failed to write data for key");
+  }
+
+  uint32_t checksum = 0;
+  checksum = update_crc(checksum, &remove_op, sizeof(remove_op));
+  checksum =
+      update_crc(checksum, &key_length_prefix, sizeof(key_length_prefix));
+  checksum = update_crc(checksum, key.data(), key.size());
+  auto checksum_bytes_written = write(fd_, &checksum, sizeof(checksum));
+  if (checksum_bytes_written == -1) {
+    throw std::runtime_error("Failed to write checksum for log remove");
   }
 
   fsync(fd_);
