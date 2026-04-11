@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 namespace kv {
 
@@ -19,7 +20,11 @@ SSTableWriter::SSTableWriter(const std::string &path) {
 SSTableWriter::~SSTableWriter() { close(fd_); }
 
 void SSTableWriter::write_memtable(const Memtable &memtable) {
+  std::vector<std::pair<std::string, uint64_t>> key_to_offset;
+
   for (const auto &[key, value] : memtable) {
+    uint64_t offset = lseek(fd_, 0, SEEK_CUR);
+
     uint32_t key_length = key.size();
     auto key_length_bytes_written = write(fd_, &key_length, sizeof(key_length));
     if (key_length_bytes_written == -1) {
@@ -51,7 +56,27 @@ void SSTableWriter::write_memtable(const Memtable &memtable) {
             "Failed to write tombstone marker for deleted key");
       }
     }
+
+    key_to_offset.emplace_back(key, offset);
   }
+
+  uint64_t index_offset = lseek(fd_, 0, SEEK_CUR);
+  for (const auto &[key, offset] : key_to_offset) {
+    uint32_t key_length = key.size();
+    auto key_length_bytes_written = write(fd_, &key_length, sizeof(key_length));
+    if (key_length_bytes_written == -1) {
+      throw std::runtime_error("Failed to write length prefix for index key");
+    }
+    auto key_data_bytes_written = write(fd_, key.data(), key.size());
+    if (key_data_bytes_written == -1) {
+      throw std::runtime_error("Failed to write data for index key");
+    }
+    auto offset_bytes_written = write(fd_, &offset, sizeof(offset));
+    if (offset_bytes_written == -1) {
+      throw std::runtime_error("Failed to write offset for index entry");
+    }
+  }
+  write(fd_, &index_offset, sizeof(index_offset));
 
   fsync(fd_);
 }
