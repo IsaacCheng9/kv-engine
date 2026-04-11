@@ -18,6 +18,7 @@ add_library(kv_engine
     src/store.cpp
     src/log_file.cpp
     src/memtable.cpp
+    src/sstable_writer.cpp
     src/wal.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
@@ -40,6 +41,7 @@ enable_testing()
 add_executable(kv_engine_tests
     tests/log_file_test.cpp
     tests/memtable_test.cpp
+    tests/sstable_writer_test.cpp
     tests/store_test.cpp
     tests/wal_test.cpp
 )
