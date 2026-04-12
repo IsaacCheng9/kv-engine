@@ -75,7 +75,9 @@ TEST(WALTest, ReplayGeneratesCorrectMemtable) {
 
 TEST(WALTest, ReplayOnEmptyFile) {
   const std::string path = "/tmp/kv_wal_empty_replay";
-  { WAL wal(path); }
+  {
+    WAL wal(path);
+  }
 
   Memtable memtable;
   {
@@ -118,6 +120,17 @@ TEST(WALTest, ReplayWithCorruptedRecord) {
   ASSERT_TRUE(value2.has_value());
   EXPECT_EQ(value2.value(), "value2");
 
+  std::remove(path.c_str());
+}
+
+TEST(WALTest, ClearTruncatesFile) {
+  const std::string path = "/tmp/kv_wal_clear";
+  std::remove(path.c_str());
+  WAL wal(path);
+  wal.log_put("key1", "value1");
+  EXPECT_GT(std::filesystem::file_size(path), 0);
+  wal.clear();
+  EXPECT_EQ(std::filesystem::file_size(path), 0);
   std::remove(path.c_str());
 }
 } // namespace
