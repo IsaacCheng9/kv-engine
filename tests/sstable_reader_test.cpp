@@ -13,6 +13,7 @@ namespace {
 
 TEST(SSTableReaderTest, ConstructionWithValidPath) {
   const std::string path = "/tmp/kv_sstable_reader_test";
+  std::remove(path.c_str());
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -40,6 +41,7 @@ TEST(SSTableReaderTest, ConstructionWithInvalidPath) {
 
 TEST(SSTableReaderTest, GetReturnsNulloptForMissingKey) {
   const std::string path = "/tmp/kv_sstable_reader_test_missing_key";
+  std::remove(path.c_str());
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -57,6 +59,7 @@ TEST(SSTableReaderTest, GetReturnsNulloptForMissingKey) {
 
 TEST(SSTableReaderTest, GetReturnsValueForExistingKey) {
   const std::string path = "/tmp/kv_sstable_reader_test_existing_key";
+  std::remove(path.c_str());
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -79,6 +82,7 @@ TEST(SSTableReaderTest, GetReturnsValueForExistingKey) {
 
 TEST(SSTableReaderTest, GetReturnsNulloptForDeletedKey) {
   const std::string path = "/tmp/kv_sstable_reader_test_deleted_key";
+  std::remove(path.c_str());
   {
     SSTableWriter writer(path);
     Memtable memtable;

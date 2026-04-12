@@ -10,6 +10,7 @@ namespace {
 TEST(EngineTest, PutAndGet) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_put_get");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   Engine engine(temp_dir);
@@ -30,6 +31,7 @@ TEST(EngineTest, PutAndGet) {
 TEST(EngineTest, Remove) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_remove");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   Engine engine(temp_dir);
@@ -45,6 +47,7 @@ TEST(EngineTest, Remove) {
 TEST(EngineTest, FlushTriggersOnThreshold) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_flush");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   // Use a small memtable size to trigger flush quickly.
@@ -69,6 +72,7 @@ TEST(EngineTest, FlushTriggersOnThreshold) {
 TEST(EngineTest, WALReplay) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_wal_replay");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   {

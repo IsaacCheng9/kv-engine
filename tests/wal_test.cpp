@@ -12,6 +12,7 @@ namespace {
 
 TEST(WALTest, ConstructionWithValidPath) {
   const std::string path = "/tmp/kv_wal_test";
+  std::remove(path.c_str());
   EXPECT_NO_THROW(WAL wal(path));
   EXPECT_TRUE(std::filesystem::exists(path));
   std::remove(path.c_str());
@@ -23,6 +24,7 @@ TEST(WALTest, ConstructionWithInvalidPath) {
 
 TEST(WALTest, LogPutDoesNotThrow) {
   const std::string path = "/tmp/kv_wal_put";
+  std::remove(path.c_str());
   WAL wal(path);
   EXPECT_NO_THROW(wal.log_put("key1", "value1"));
   std::remove(path.c_str());
@@ -30,6 +32,7 @@ TEST(WALTest, LogPutDoesNotThrow) {
 
 TEST(WALTest, LogRemoveDoesNotThrow) {
   const std::string path = "/tmp/kv_wal_remove";
+  std::remove(path.c_str());
   WAL wal(path);
   EXPECT_NO_THROW(wal.log_remove("key1"));
   std::remove(path.c_str());
@@ -37,6 +40,7 @@ TEST(WALTest, LogRemoveDoesNotThrow) {
 
 TEST(WALTest, FileGrowsAfterWrites) {
   const std::string path = "/tmp/kv_wal_grow";
+  std::remove(path.c_str());
   WAL wal(path);
   auto size_before = std::filesystem::file_size(path);
   wal.log_put("key1", "value1");
@@ -52,6 +56,7 @@ TEST(WALTest, FileGrowsAfterWrites) {
 
 TEST(WALTest, ReplayGeneratesCorrectMemtable) {
   const std::string path = "/tmp/kv_wal_replay";
+  std::remove(path.c_str());
   {
     WAL wal(path);
     wal.log_put("key1", "value1");
@@ -75,6 +80,7 @@ TEST(WALTest, ReplayGeneratesCorrectMemtable) {
 
 TEST(WALTest, ReplayOnEmptyFile) {
   const std::string path = "/tmp/kv_wal_empty_replay";
+  std::remove(path.c_str());
   { WAL wal(path); }
 
   Memtable memtable;
@@ -90,6 +96,7 @@ TEST(WALTest, ReplayOnEmptyFile) {
 
 TEST(WALTest, ReplayWithCorruptedRecord) {
   const std::string path = "/tmp/kv_wal_corrupted_replay";
+  std::remove(path.c_str());
   {
     WAL wal(path);
     wal.log_put("key1", "value1");
