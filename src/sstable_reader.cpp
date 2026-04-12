@@ -24,6 +24,8 @@ SSTableReader::SSTableReader(const std::string &path) {
   lseek(fd_, file_size - sizeof(uint64_t), SEEK_SET);
   uint64_t index_offset;
   read(fd_, &index_offset, sizeof(index_offset));
+  // Save the offset where the index block starts.
+  data_end_ = index_offset;
 
   lseek(fd_, index_offset, SEEK_SET);
   while (lseek(fd_, 0, SEEK_CUR) <
@@ -52,7 +54,7 @@ SSTableReader::SSTableReader(const std::string &path) {
 
 SSTableReader::~SSTableReader() { close(fd_); }
 
-std::optional<std::string> SSTableReader::get(std::string_view key) const {
+std::optional<std::string> SSTableReader::get(std::string_view key) {
   // Find the key from the index using binary search.
   auto iterator = std::lower_bound(
       index_.begin(), index_.end(), key,
@@ -80,4 +82,32 @@ std::optional<std::string> SSTableReader::get(std::string_view key) const {
 
   return value;
 }
+
+void SSTableReader::seek_to_first() { lseek(fd_, 0, SEEK_SET); }
+
+bool SSTableReader::next_entry(std::string &out_key,
+                               std::optional<std::string> &out_value) {
+  if (lseek(fd_, 0, SEEK_CUR) >= static_cast<off_t>(data_end_)) {
+    return false;
+  }
+
+  uint32_t key_length;
+  read(fd_, &key_length, sizeof(key_length));
+  out_key.resize(key_length);
+  read(fd_, out_key.data(), key_length);
+
+  uint32_t value_length;
+  read(fd_, &value_length, sizeof(value_length));
+  // Key was deleted, so a tombstone marker exists instead of the value.
+  if (value_length == UINT32_MAX) {
+    out_value = std::nullopt;
+  } else {
+    std::string value(value_length, '\0');
+    read(fd_, value.data(), value_length);
+    out_value = std::move(value);
+  }
+
+  return true;
+}
+
 } // namespace kv

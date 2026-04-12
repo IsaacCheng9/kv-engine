@@ -14,7 +14,7 @@ public:
   explicit SSTableReader(const std::string &path);
   ~SSTableReader();
 
-  std::optional<std::string> get(std::string_view key) const;
+  std::optional<std::string> get(std::string_view key);
   void seek_to_first();
   bool next_entry(std::string &out_key, std::optional<std::string> &out_value);
 
