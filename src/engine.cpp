@@ -19,29 +19,60 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
     auto filename = entry.path().filename().string();
     if (filename.starts_with("sstable_") &&
         entry.path().extension() == ".dat") {
-      // Extract the ID between "sstable_" and ".dat".
-      auto id_str = filename.substr(8, filename.size() - 8 - 4);
-      sstable_ids_.push_back(std::stoull(id_str));
+
+      // File names are in format: sstable_<level>_<id>.dat
+      // Split the file so we can extract the level and ID.
+      auto first_underscore = 8; // Start after 'sstable_'.
+      auto second_underscore = filename.find('_', first_underscore);
+      auto dot_dat = filename.find('.', second_underscore);
+
+      auto level_str = filename.substr(first_underscore,
+                                       second_underscore - first_underscore);
+      uint64_t level = std::stoull(level_str);
+      auto id_str = filename.substr(second_underscore + 1,
+                                    dot_dat - second_underscore - 1);
+      uint64_t id = std::stoull(id_str);
+
+      if (level_files_.size() <= level) {
+        level_files_.resize(level + 1);
+        next_id_per_level_.resize(level + 1, 0);
+      }
+      level_files_[level].push_back(id);
     }
   }
-  std::sort(sstable_ids_.begin(), sstable_ids_.end());
-  // The next SSTable ID is the highest ID + 1.
-  if (!sstable_ids_.empty()) {
-    next_sstable_id_ = sstable_ids_.back() + 1;
+
+  // For each level, sort the files and set the next ID to the highest ID + 1.
+  for (size_t level = 0; level < level_files_.size(); ++level) {
+    std::sort(level_files_[level].begin(), level_files_[level].end());
+    if (!level_files_[level].empty()) {
+      next_id_per_level_[level] = level_files_[level].back() + 1;
+    }
   }
 }
 
 void Engine::flush_if_full() {
-  if (memtable_.is_full()) {
-    // Use the next available SSTable file name based on an incrementing ID - we
-    // do this because timestamp-based names can have collisions in rare cases.
-    uint64_t new_id = next_sstable_id_++;
-    SSTableWriter writer(data_dir_ + "/sstable_" + std::to_string(new_id) +
-                         ".dat");
-    writer.write_memtable(memtable_);
-    memtable_.clear();
-    wal_.clear();
-    sstable_ids_.push_back(new_id);
+  if (!memtable_.is_full())
+    return;
+  if (level_files_.empty()) {
+    level_files_.resize(1);
+    next_id_per_level_.resize(1, 0);
+  }
+
+  // Use the next available SSTable file name based on an incrementing ID -
+  // we do this because timestamp-based names can have collisions in rare
+  // cases.
+  // We always flush to level 0.
+  uint64_t new_id = next_id_per_level_[0]++;
+  SSTableWriter writer(data_dir_ + "/sstable_0_" + std::to_string(new_id) +
+                       ".dat");
+  writer.write_memtable(memtable_);
+  memtable_.clear();
+  wal_.clear();
+  level_files_[0].push_back(new_id);
+
+  // Trigger L0 -> L1 compaction if threshold reached.
+  if (level_files_[0].size() >= 4) {
+    compact_level_zero();
   }
 }
 
@@ -58,13 +89,16 @@ std::optional<std::string> Engine::get(const std::string &key) const {
     return memtable_value;
   }
 
-  for (auto iterator = sstable_ids_.rbegin(); iterator != sstable_ids_.rend();
-       ++iterator) {
-    SSTableReader reader(data_dir_ + "/sstable_" + std::to_string(*iterator) +
-                         ".dat");
-    auto sstable_value = reader.get(key);
-    if (sstable_value.has_value()) {
-      return sstable_value;
+  for (std::size_t level = 0; level < level_files_.size(); ++level) {
+    for (auto iterator = level_files_[level].rbegin();
+         iterator != level_files_[level].rend(); ++iterator) {
+      auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
+                          "_" + std::to_string(*iterator) + ".dat";
+      SSTableReader reader(sstable_path);
+      auto sstable_value = reader.get(key);
+      if (sstable_value.has_value()) {
+        return sstable_value;
+      }
     }
   }
 
@@ -77,5 +111,7 @@ void Engine::remove(const std::string &key) {
   memtable_.remove(key);
   flush_if_full();
 }
+
+void Engine::compact_level_zero() {}
 
 } // namespace kv

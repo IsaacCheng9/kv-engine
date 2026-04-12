@@ -25,8 +25,10 @@ private:
   std::string data_dir_;
   Memtable memtable_;
   WAL wal_;
-  std::vector<uint64_t> sstable_ids_;
-  uint64_t next_sstable_id_ = 0;
+  std::vector<std::vector<uint64_t>> level_files_;
+  std::vector<uint64_t> next_id_per_level_;
+
+  void compact_level_zero();
 };
 
 } // namespace kv
