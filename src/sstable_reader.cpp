@@ -1,4 +1,5 @@
 #include "sstable_reader.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
