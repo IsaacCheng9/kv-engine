@@ -24,6 +24,7 @@ private:
   std::string data_dir_;
   Memtable memtable_;
   WAL wal_;
+  std::vector<uint64_t> sstable_ids_;
   uint64_t next_sstable_id_ = 0;
 };
 
