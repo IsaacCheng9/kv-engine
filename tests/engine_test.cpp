@@ -10,6 +10,7 @@ namespace {
 TEST(EngineTest, PutAndGet) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_put_get");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   Engine engine(temp_dir);
@@ -30,6 +31,7 @@ TEST(EngineTest, PutAndGet) {
 TEST(EngineTest, Remove) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_remove");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   Engine engine(temp_dir);
@@ -45,6 +47,7 @@ TEST(EngineTest, Remove) {
 TEST(EngineTest, FlushTriggersOnThreshold) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_flush");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   // Use a small memtable size to trigger flush quickly.
@@ -69,6 +72,7 @@ TEST(EngineTest, FlushTriggersOnThreshold) {
 TEST(EngineTest, WALReplay) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_wal_replay");
+  std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
   {
@@ -92,5 +96,47 @@ TEST(EngineTest, WALReplay) {
   std::filesystem::remove_all(temp_dir);
 }
 
+TEST(EngineTest, GetReturnsValueFromSSTableAfterFlush) {
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_test_get_returns_value_from_sstable_after_flush");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Use a small memtable size to trigger flush on first put.
+  Engine engine(temp_dir, 1);
+  engine.put("key1", "value1");
+
+  // After flush, memtable is empty - get must come from the SSTable.
+  auto value1 = engine.get("key1");
+  EXPECT_TRUE(value1.has_value());
+  EXPECT_EQ(value1.value(), "value1");
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_test_get_newer_sstable_overrides_older_sstable");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Small memtable size to trigger flush on each put.
+  Engine engine(temp_dir, 1);
+  // Flushes to sstable_0.dat.
+  engine.put("key1", "value1");
+  // Flushes to sstable_1.dat.
+  engine.put("key1", "value2");
+
+  // Get should return the value from the newer SSTable (sstable_1.dat).
+  auto value2 = engine.get("key1");
+  EXPECT_TRUE(value2.has_value());
+  EXPECT_EQ(value2.value(), "value2");
+
+  std::filesystem::remove_all(temp_dir);
+}
 } // namespace
 } // namespace kv

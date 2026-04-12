@@ -12,6 +12,7 @@ namespace {
 
 TEST(SSTableWriterTest, ConstructionWithValidPath) {
   const std::string path = "/tmp/kv_log_file_test";
+  std::remove(path.c_str());
   EXPECT_NO_THROW(SSTableWriter writer(path));
   EXPECT_TRUE(std::filesystem::exists(path));
   std::remove(path.c_str());

@@ -12,6 +12,7 @@ namespace {
 
 TEST(LogFileTest, ConstructionWithValidPath) {
   const std::string path = "/tmp/kv_log_file_test";
+  std::remove(path.c_str());
   EXPECT_NO_THROW(LogFile log_file(path));
   EXPECT_TRUE(std::filesystem::exists(path));
   std::remove(path.c_str());
@@ -24,6 +25,7 @@ TEST(LogFileTest, ConstructionWithInvalidPath) {
 
 TEST(LogFileTest, AppendedEntriesAreReadBack) {
   const std::string path = "/tmp/kv_log_file";
+  std::remove(path.c_str());
   LogFile log_file(path);
   EXPECT_NO_THROW(log_file.append("entry1"));
   EXPECT_NO_THROW(log_file.append("entry2"));
@@ -37,6 +39,7 @@ TEST(LogFileTest, AppendedEntriesAreReadBack) {
 
 TEST(LogFileTest, ReadsEmptyVectorForEmptyLogs) {
   const std::string path = "/tmp/kv_log_file_empty";
+  std::remove(path.c_str());
   LogFile log_file(path);
   std::vector<std::string> actual_entries = log_file.read_all();
   EXPECT_TRUE(actual_entries.empty());
