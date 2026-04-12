@@ -16,6 +16,7 @@ endif()
 # Library
 add_library(kv_engine
     src/store.cpp
+    src/compaction.cpp
     src/engine.cpp
     src/log_file.cpp
     src/memtable.cpp
@@ -41,6 +42,7 @@ FetchContent_MakeAvailable(googletest)
 # Tests
 enable_testing()
 add_executable(kv_engine_tests
+    tests/compaction_test.cpp
     tests/engine_test.cpp
     tests/log_file_test.cpp
     tests/memtable_test.cpp
