@@ -75,9 +75,7 @@ TEST(WALTest, ReplayGeneratesCorrectMemtable) {
 
 TEST(WALTest, ReplayOnEmptyFile) {
   const std::string path = "/tmp/kv_wal_empty_replay";
-  {
-    WAL wal(path);
-  }
+  { WAL wal(path); }
 
   Memtable memtable;
   {
