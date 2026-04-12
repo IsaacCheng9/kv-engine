@@ -184,4 +184,12 @@ void WAL::replay(Memtable &memtable) {
     }
   }
 }
+
+void WAL::clear() {
+  // Truncate the file to clear it.
+  if (ftruncate(fd_, 0) == -1) {
+    throw std::runtime_error("Failed to truncate WAL file");
+  }
+  lseek(fd_, 0, SEEK_SET);
+}
 } // namespace kv

@@ -63,5 +63,15 @@ TEST(MemtableTest, IsFullReturnsFalseWhenSizeIsBelowMax) {
   memtable.put("key1", "value1"); // 10 bytes
   EXPECT_FALSE(memtable.is_full());
 }
+
+TEST(MemtableTest, ClearRemovesAllEntries) {
+  Memtable memtable;
+  memtable.put("key1", "value1");
+  memtable.put("key2", "value2");
+  memtable.clear();
+  EXPECT_EQ(memtable.size(), 0);
+  EXPECT_FALSE(memtable.get("key1").has_value());
+  EXPECT_FALSE(memtable.get("key2").has_value());
+}
 } // namespace
 } // namespace kv

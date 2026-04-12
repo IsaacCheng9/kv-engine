@@ -120,5 +120,16 @@ TEST(WALTest, ReplayWithCorruptedRecord) {
 
   std::remove(path.c_str());
 }
+
+TEST(WALTest, ClearTruncatesFile) {
+  const std::string path = "/tmp/kv_wal_clear";
+  std::remove(path.c_str());
+  WAL wal(path);
+  wal.log_put("key1", "value1");
+  EXPECT_GT(std::filesystem::file_size(path), 0);
+  wal.clear();
+  EXPECT_EQ(std::filesystem::file_size(path), 0);
+  std::remove(path.c_str());
+}
 } // namespace
 } // namespace kv

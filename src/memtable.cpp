@@ -49,4 +49,10 @@ void Memtable::remove(const std::string &key) {
 
   data_[key] = std::nullopt;
 }
+
+void Memtable::clear() {
+  std::unique_lock lock(mutex_);
+  data_.clear();
+  current_size_ = 0;
+}
 } // namespace kv

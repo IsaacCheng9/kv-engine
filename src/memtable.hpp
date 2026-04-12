@@ -15,6 +15,7 @@ public:
   void put(const std::string &key, const std::string &value);
   std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
+  void clear();
 
   auto begin() const {
     std::shared_lock lock(mutex_);

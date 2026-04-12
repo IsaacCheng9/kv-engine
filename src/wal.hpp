@@ -16,6 +16,7 @@ public:
   void log_put(std::string_view key, std::string_view value);
   void log_remove(std::string_view key);
   void replay(Memtable &memtable);
+  void clear();
 
 private:
   int fd_;
