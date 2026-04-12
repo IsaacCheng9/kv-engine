@@ -5,8 +5,9 @@
 
 namespace kv {
 
-Engine::Engine(const std::string &data_dir)
-    : data_dir_(data_dir), wal_(data_dir + "/wal.log") {
+Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
+    : data_dir_(data_dir), memtable_(memtable_max_size),
+      wal_(data_dir + "/wal.log") {
   // On startup, replay the WAL to reconstruct the memtable.
   wal_.replay(memtable_);
 }

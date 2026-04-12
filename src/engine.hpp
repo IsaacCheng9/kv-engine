@@ -12,7 +12,9 @@ namespace kv {
 class Engine {
 
 public:
-  explicit Engine(const std::string &data_dir);
+  // Defaults to 4MB memtable size, which is common in KV stores.
+  explicit Engine(const std::string &data_dir,
+                  std::size_t memtable_max_size = 4 * 1024 * 1024);
   void put(const std::string &key, const std::string &value);
   std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
