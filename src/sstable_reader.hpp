@@ -15,10 +15,13 @@ public:
   ~SSTableReader();
 
   std::optional<std::string> get(std::string_view key) const;
+  void seek_to_first();
+  bool next_entry(std::string &out_key, std::optional<std::string> &out_value);
 
 private:
   int fd_;
   std::vector<std::pair<std::string, uint64_t>> index_;
+  uint64_t data_end_; // Offset where the index block starts.
 };
 } // namespace kv
 
