@@ -51,4 +51,32 @@ SSTableReader::SSTableReader(const std::string &path) {
 
 SSTableReader::~SSTableReader() { close(fd_); }
 
+std::optional<std::string> SSTableReader::get(std::string_view key) const {
+  // Find the key from the index using binary search.
+  auto iterator = std::lower_bound(
+      index_.begin(), index_.end(), key,
+      [](const auto &entry, const auto &key) { return entry.first < key; });
+  if (iterator == index_.end() || iterator->first != key) {
+    return std::nullopt;
+  }
+
+  uint64_t data_offset = iterator->second;
+  lseek(fd_, data_offset, SEEK_SET);
+
+  // Skip the key.
+  uint32_t key_length;
+  read(fd_, &key_length, sizeof(key_length));
+  lseek(fd_, key_length, SEEK_CUR);
+  // Read the value if it exists.
+  uint32_t value_length;
+  read(fd_, &value_length, sizeof(value_length));
+  // Key was deleted, so a tombstone marker is written instead of the value.
+  if (value_length == UINT32_MAX) {
+    return std::nullopt;
+  }
+  std::string value(value_length, '\0');
+  read(fd_, value.data(), value_length);
+
+  return value;
+}
 } // namespace kv
