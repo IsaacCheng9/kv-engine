@@ -1,5 +1,8 @@
 #include "engine.hpp"
+#include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
+#include <algorithm>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -49,7 +52,24 @@ void Engine::put(const std::string &key, const std::string &value) {
 }
 
 std::optional<std::string> Engine::get(const std::string &key) const {
-  return memtable_.get(key);
+  // Perform multi-level lookups: Memtable -> SSTables (newest to oldest).
+  auto memtable_value = memtable_.get(key);
+  if (memtable_value.has_value()) {
+    return memtable_value;
+  }
+
+  for (auto iterator = sstable_ids_.rbegin(); iterator != sstable_ids_.rend();
+       ++iterator) {
+    SSTableReader reader(data_dir_ + "/sstable_" + std::to_string(*iterator) +
+                         ".dat");
+    auto sstable_value = reader.get(key);
+    if (sstable_value.has_value()) {
+      return sstable_value;
+    }
+  }
+
+  // Key not found in any level.
+  return std::nullopt;
 }
 
 void Engine::remove(const std::string &key) {
