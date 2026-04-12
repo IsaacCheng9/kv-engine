@@ -3,6 +3,7 @@
 
 #include "memtable.hpp"
 #include "wal.hpp"
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -21,6 +22,7 @@ private:
   std::string data_dir_;
   Memtable memtable_;
   WAL wal_;
+  uint64_t next_sstable_id_ = 0;
 };
 
 } // namespace kv
