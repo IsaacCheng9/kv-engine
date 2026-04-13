@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 
 namespace kv {
@@ -104,6 +105,9 @@ std::optional<std::string> Engine::get(const std::string &key) const {
     return memtable_value;
   }
 
+  // Take the shared lock to read the level_files_ state for the compaction
+  // thread.
+  std::shared_lock<std::shared_mutex> lock(state_mutex_);
   for (std::size_t level = 0; level < level_files_.size(); ++level) {
     for (auto iterator = level_files_[level].rbegin();
          iterator != level_files_[level].rend(); ++iterator) {
