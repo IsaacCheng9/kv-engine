@@ -122,10 +122,13 @@ template <typename Op> Stats run_workload(std::size_t ops, Op op) {
 
 Stats bench_put() {
   const auto dir = fresh_dir("put");
-  kv::Engine engine(dir, memtable_small);
   const auto value = make_value();
-  auto stats = run_workload(
-      put_ops, [&](std::size_t i) { engine.put(make_key(i), value); });
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_small);
+    stats = run_workload(
+        put_ops, [&](std::size_t i) { engine.put(make_key(i), value); });
+  }
   std::filesystem::remove_all(dir);
   return stats;
 }
@@ -133,16 +136,19 @@ Stats bench_put() {
 Stats bench_get_memtable() {
   const auto dir = fresh_dir("get_memtable");
   // Large memtable so nothing flushes - all reads hit the memtable.
-  kv::Engine engine(dir, memtable_large);
   const auto value = make_value();
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_large);
 
-  // Pre-load keys.
-  for (std::size_t i = 0; i < get_memtable_ops; ++i) {
-    engine.put(make_key(i), value);
+    // Pre-load keys.
+    for (std::size_t i = 0; i < get_memtable_ops; ++i) {
+      engine.put(make_key(i), value);
+    }
+
+    stats = run_workload(get_memtable_ops,
+                         [&](std::size_t i) { (void)engine.get(make_key(i)); });
   }
-
-  auto stats = run_workload(
-      get_memtable_ops, [&](std::size_t i) { (void)engine.get(make_key(i)); });
   std::filesystem::remove_all(dir);
   return stats;
 }
@@ -150,15 +156,18 @@ Stats bench_get_memtable() {
 Stats bench_get_sstable() {
   const auto dir = fresh_dir("get_sstable");
   // Small memtable forces frequent flushes - most reads hit SSTables on disk.
-  kv::Engine engine(dir, memtable_small);
   const auto value = make_value();
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_small);
 
-  for (std::size_t i = 0; i < get_sstable_ops; ++i) {
-    engine.put(make_key(i), value);
+    for (std::size_t i = 0; i < get_sstable_ops; ++i) {
+      engine.put(make_key(i), value);
+    }
+
+    stats = run_workload(get_sstable_ops,
+                         [&](std::size_t i) { (void)engine.get(make_key(i)); });
   }
-
-  auto stats = run_workload(
-      get_sstable_ops, [&](std::size_t i) { (void)engine.get(make_key(i)); });
   std::filesystem::remove_all(dir);
   return stats;
 }
@@ -167,44 +176,49 @@ Stats bench_get_miss() {
   const auto dir = fresh_dir("get_miss");
   // Small memtable so negative lookups must traverse multiple SSTables - this
   // is where bloom filters will shine.
-  kv::Engine engine(dir, memtable_small);
   const auto value = make_value();
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_small);
 
-  for (std::size_t i = 0; i < get_miss_ops; ++i) {
-    engine.put(make_key(i), value);
+    for (std::size_t i = 0; i < get_miss_ops; ++i) {
+      engine.put(make_key(i), value);
+    }
+
+    // Query keys that were never inserted (prefix makes them guaranteed miss).
+    stats = run_workload(get_miss_ops, [&](std::size_t i) {
+      (void)engine.get("missing_" + make_key(i));
+    });
   }
-
-  // Query keys that were never inserted (prefix makes them guaranteed miss).
-  auto stats = run_workload(get_miss_ops, [&](std::size_t i) {
-    (void)engine.get("missing_" + make_key(i));
-  });
   std::filesystem::remove_all(dir);
   return stats;
 }
 
 Stats bench_mixed_50_50() {
   const auto dir = fresh_dir("mixed");
-  kv::Engine engine(dir, memtable_small);
   const auto value = make_value();
-
-  // Seed some keys so early reads have something to find.
-  for (std::size_t i = 0; i < mixed_ops / 10; ++i) {
-    engine.put(make_key(i), value);
-  }
-
   // Deterministic PRNG for reproducibility across runs.
   std::mt19937 rng(42);
   std::uniform_int_distribution<std::size_t> key_dist(0, mixed_ops - 1);
   std::uniform_int_distribution<int> op_dist(0, 1);
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_small);
 
-  auto stats = run_workload(mixed_ops, [&](std::size_t) {
-    const auto key = make_key(key_dist(rng));
-    if (op_dist(rng) == 0) {
-      engine.put(key, value);
-    } else {
-      (void)engine.get(key);
+    // Seed some keys so early reads have something to find.
+    for (std::size_t i = 0; i < mixed_ops / 10; ++i) {
+      engine.put(make_key(i), value);
     }
-  });
+
+    stats = run_workload(mixed_ops, [&](std::size_t) {
+      const auto key = make_key(key_dist(rng));
+      if (op_dist(rng) == 0) {
+        engine.put(key, value);
+      } else {
+        (void)engine.get(key);
+      }
+    });
+  }
   std::filesystem::remove_all(dir);
   return stats;
 }
