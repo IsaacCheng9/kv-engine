@@ -1,4 +1,5 @@
 #include "engine.hpp"
+#include "compaction.hpp"
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
 #include <algorithm>
@@ -112,6 +113,49 @@ void Engine::remove(const std::string &key) {
   flush_if_full();
 }
 
-void Engine::compact_level_zero() {}
+void Engine::compact_level_zero() {
+  // Ensure L1 exists.
+  if (level_files_.size() < 2) {
+    level_files_.resize(2);
+    next_id_per_level_.resize(2, 0);
+  }
+
+  // Build the current L0 file paths.
+  std::vector<std::string> l0_paths;
+  for (auto id : level_files_[0]) {
+    l0_paths.push_back(data_dir_ + "/sstable_0_" + std::to_string(id) + ".dat");
+  }
+
+  // Fold L0 into L1. Start with the oldest file and merge newer files into it
+  // one at a time, writing immediate files to a temp path.
+  std::string accumulator = l0_paths[0];
+  std::vector<std::string> temp_paths;
+  for (std::size_t i = 1; i < l0_paths.size(); ++i) {
+    std::string temp_path =
+        data_dir_ + "/sstable_compact_tmp_" + std::to_string(i) + ".dat";
+    compact_sstables(accumulator, l0_paths[i], temp_path);
+    temp_paths.push_back(temp_path);
+    accumulator = temp_path;
+  }
+
+  // Move the final result to the new L1 file.
+  uint64_t new_l1_id = next_id_per_level_[1]++;
+  std::string l1_path =
+      data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
+  std::filesystem::rename(accumulator, l1_path);
+  level_files_[1].push_back(new_l1_id);
+  level_files_[0].clear();
+
+  // Delete the original L0 files and the temp files, except the one we just
+  // renamed.
+  for (const auto &path : l0_paths) {
+    std::filesystem::remove(path);
+  }
+  for (const auto &temp_path : temp_paths) {
+    if (temp_path != accumulator) {
+      std::filesystem::remove(temp_path);
+    }
+  }
+}
 
 } // namespace kv
