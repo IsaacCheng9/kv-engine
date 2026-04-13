@@ -34,15 +34,54 @@ flowchart TD
     wal -.replay on startup.-> memtable
 ```
 
-## Building
+## Build
 
 ```bash
 cmake -B build -DSANITISE=ON
 cmake --build build
 ```
 
-## Testing
+## Run Tests
 
 ```bash
 cd build && ctest --output-on-failure
 ```
+
+## Benchmarks
+
+Benchmarks are built into a separate binary via an opt-in CMake flag, using a
+release build with `-O3 -DNDEBUG` so sanitiser overhead doesn't skew the
+numbers.
+
+```bash
+cmake -B build_bench -DBENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build_bench
+./build_bench/kv_engine_benchmark
+```
+
+To save the results to a file while still seeing progress in the terminal:
+
+```bash
+./build_bench/kv_engine_benchmark | tee docs/YYYY_MM_DD_label.md
+```
+
+Use a date-prefixed filename and a label describing the milestone (e.g.
+`2026_04_13_baseline.md`, `2026_04_20_post_bloom_filter.md`). Each run produces
+a markdown table of latency percentiles and throughput per scenario, designed to
+be pasted into PR descriptions so feature-level improvements can be attributed.
+
+### Scenarios
+
+- **put** – pure write throughput on a small memtable (forces frequent flushes).
+  Dominated by `fsync` cost on the WAL
+- **get_memtable** – reads served entirely from the memtable (no disk I/O).
+  Best-case read path
+- **get_sstable** – reads served from SSTables on disk. Degrades quadratically
+  without levelled compaction since each lookup scans all SSTables
+- **get_miss** – negative lookups for keys that were never inserted. Worst case
+  without bloom filters – every SSTable must be checked
+- **mixed_50_50** – 50% reads / 50% writes with deterministic key selection.
+  Production-like workload
+- **crash_recovery** – time to replay a populated WAL on engine startup. Each op
+  populates a fresh WAL, destroys the engine, and times the reopen. Measures the
+  cost of the durability guarantee after a simulated crash
