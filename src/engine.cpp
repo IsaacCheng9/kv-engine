@@ -57,7 +57,10 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
 }
 
 Engine::~Engine() {
-  shutdown_ = true;
+  {
+    std::lock_guard<std::mutex> lock(compaction_mutex_);
+    shutdown_ = true;
+  }
   compaction_cv_.notify_all();
   if (compaction_thread_.joinable()) {
     compaction_thread_.join();
@@ -148,16 +151,21 @@ void Engine::compact_level_zero() {
   // next_id_per_level_ and may resize level_files_. After releasing the lock,
   // readers can still see the old L0 files on disk via level_files_[0] - the
   // snapshot is just for us.
+  std::vector<uint64_t> l0_ids;
   std::vector<std::string> l0_paths;
   uint64_t new_l1_id;
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    if (level_files_.empty() || level_files_[0].size() < 4) {
+      return;
+    }
     if (level_files_.size() < 2) {
       level_files_.resize(2);
       next_id_per_level_.resize(2, 0);
     }
     new_l1_id = next_id_per_level_[1]++;
     for (auto id : level_files_[0]) {
+      l0_ids.push_back(id);
       l0_paths.push_back(data_dir_ + "/sstable_0_" + std::to_string(id) +
                          ".dat");
     }
@@ -186,7 +194,9 @@ void Engine::compact_level_zero() {
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     level_files_[1].push_back(new_l1_id);
-    level_files_[0].clear();
+    std::erase_if(level_files_[0], [&](uint64_t id) {
+      return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
+    });
   }
 
   // Delete the old files outside the lock. Safe because the vector
