@@ -48,6 +48,14 @@ constexpr std::size_t get_sstable_ops = 5'000;
 constexpr std::size_t get_miss_ops = 5'000;
 constexpr std::size_t mixed_ops = 5'000;
 
+// Crash recovery populates the WAL, destroys the engine, and measures the
+// time to reconstruct state on a fresh open. Each op does one full populate
+// and replay cycle so we can report percentile latencies like the other
+// scenarios. A large memtable keeps entries in the WAL rather than flushing
+// to SSTables, which is the worst case for replay.
+constexpr std::size_t crash_recovery_ops = 20;
+constexpr std::size_t crash_recovery_entries_per_op = 5'000;
+
 // Small memtable (64 KiB) forces frequent flushes so SSTable code paths
 // actually get exercised. The default 4 MiB memtable would keep everything
 // in memory for a 100K-op run.
@@ -201,6 +209,47 @@ Stats bench_mixed_50_50() {
   return stats;
 }
 
+// Each op populates a fresh WAL, destroys the engine, and times the full
+// replay on reopen. Multiple ops give proper percentile latencies.
+Stats bench_crash_recovery() {
+  const auto dir = fresh_dir("crash_recovery");
+  const auto value = make_value();
+
+  // We only want to time the replay, not the populate step. So we populate
+  // outside the timed workload and only time the reopen.
+  std::vector<uint64_t> latencies_ns;
+  latencies_ns.reserve(crash_recovery_ops);
+
+  const auto workload_start = clock_type::now();
+  for (std::size_t op = 0; op < crash_recovery_ops; ++op) {
+    // Populate the WAL without flushing. Large memtable means all writes
+    // stay in the WAL, maximising replay work.
+    {
+      kv::Engine engine(dir, memtable_large);
+      for (std::size_t i = 0; i < crash_recovery_entries_per_op; ++i) {
+        engine.put(make_key(i), value);
+      }
+    }
+
+    // Reopen triggers WAL replay - this is the bit we actually measure.
+    const auto t0 = clock_type::now();
+    {
+      kv::Engine engine(dir, memtable_large);
+    }
+    const auto t1 = clock_type::now();
+    latencies_ns.push_back(std::chrono::duration_cast<ns>(t1 - t0).count());
+
+    // Clean up so the next op starts fresh.
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+  }
+  const auto total_s =
+      std::chrono::duration<double>(clock_type::now() - workload_start).count();
+
+  std::filesystem::remove_all(dir);
+  return compute_stats(latencies_ns, total_s);
+}
+
 void print_markdown_table(
     const std::vector<std::pair<std::string, Stats>> &results) {
   std::cout << "\n";
@@ -247,6 +296,12 @@ void run_and_record(const std::string &name, Fn fn,
 
 int main() {
   std::cout << "kv-engine benchmark\n";
+  std::cout << "  put            (" << put_ops << " ops)\n";
+  std::cout << "  get_memtable   (" << get_memtable_ops << " ops)\n";
+  std::cout << "  get_sstable    (" << get_sstable_ops << " ops)\n";
+  std::cout << "  get_miss       (" << get_miss_ops << " ops)\n";
+  std::cout << "  mixed_50_50    (" << mixed_ops << " ops)\n";
+  std::cout << "  crash_recovery (" << crash_recovery_ops << " ops)\n\n";
 
   std::vector<std::pair<std::string, Stats>> results;
   run_and_record("put", bench_put, results);
@@ -254,6 +309,7 @@ int main() {
   run_and_record("get_sstable", bench_get_sstable, results);
   run_and_record("get_miss", bench_get_miss, results);
   run_and_record("mixed_50_50", bench_mixed_50_50, results);
+  run_and_record("crash_recovery", bench_crash_recovery, results);
 
   print_markdown_table(results);
   return 0;
