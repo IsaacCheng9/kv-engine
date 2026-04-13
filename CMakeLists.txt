@@ -27,8 +27,12 @@ add_library(kv_engine
 target_include_directories(kv_engine PUBLIC src)
 target_link_libraries(kv_engine PRIVATE z)
 
-# Compiler warnings (applied to our code only, not dependencies)
-target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
+# Compiler warnings (applied to our code only, not dependencies). In release
+# mode (used for benchmarks), GCC enables _FORTIFY_SOURCE which marks read()
+# with warn_unused_result. We ignore it for now - write_all/read_all helpers
+# tracked in the backlog will fix this properly.
+target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror
+                                         -Wno-unused-result)
 
 # GoogleTest
 include(FetchContent)
@@ -56,3 +60,11 @@ target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
 gtest_discover_tests(kv_engine_tests)
+
+# Benchmark (enable with -DBENCHMARK=ON)
+option(BENCHMARK "Build the benchmark binary" OFF)
+if(BENCHMARK)
+    add_executable(kv_engine_benchmark benchmarks/kv_engine_benchmark.cpp)
+    target_link_libraries(kv_engine_benchmark PRIVATE kv_engine)
+    target_compile_options(kv_engine_benchmark PRIVATE -O3 -DNDEBUG)
+endif()
