@@ -56,3 +56,11 @@ target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
 gtest_discover_tests(kv_engine_tests)
+
+# Benchmark (enable with -DBENCHMARK=ON)
+option(BENCHMARK "Build the benchmark binary" OFF)
+if(BENCHMARK)
+    add_executable(kv_engine_benchmark benchmarks/kv_engine_benchmark.cpp)
+    target_link_libraries(kv_engine_benchmark PRIVATE kv_engine)
+    target_compile_options(kv_engine_benchmark PRIVATE -O3 -DNDEBUG)
+endif()
