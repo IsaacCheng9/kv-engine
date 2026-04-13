@@ -1,0 +1,32 @@
+name: Benchmarks
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake (release + benchmarks)
+        run: cmake -B build_bench -DBENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build benchmark binary
+        run: cmake --build build_bench --target kv_engine_benchmark
+
+      - name: Run benchmarks
+        run: |
+          set -e
+          echo "Commit: ${{ github.sha }}" | tee benchmark_results.txt
+          echo "Date: $(date -u)" | tee -a benchmark_results.txt
+          echo "" | tee -a benchmark_results.txt
+          ./build_bench/kv_engine_benchmark | tee -a benchmark_results.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: benchmark_results.txt
+          retention-days: 90
