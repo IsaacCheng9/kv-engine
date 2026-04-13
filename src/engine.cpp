@@ -107,6 +107,7 @@ void Engine::flush_if_full() {
 }
 
 void Engine::put(const std::string &key, const std::string &value) {
+  std::lock_guard<std::mutex> lock(write_mutex_);
   wal_.log_put(key, value);
   memtable_.put(key, value);
   flush_if_full();
@@ -140,6 +141,7 @@ std::optional<std::string> Engine::get(const std::string &key) const {
 }
 
 void Engine::remove(const std::string &key) {
+  std::lock_guard<std::mutex> lock(write_mutex_);
   wal_.log_remove(key);
   memtable_.remove(key);
   flush_if_full();

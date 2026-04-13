@@ -34,6 +34,10 @@ private:
   std::vector<uint64_t> next_id_per_level_;
   std::thread compaction_thread_;
   std::mutex compaction_mutex_;
+  // Serialises writes (put/remove) against each other and against the flush
+  // path. Without this, a concurrent put could modify the memtable while
+  // flush_if_full iterates it to write an SSTable, causing a use-after-free.
+  std::mutex write_mutex_;
   // Protects shared state accessed by compaction thread (level_files_,
   // next_id_per_level_). Mutable so const methods (like get) can lock it.
   mutable std::shared_mutex state_mutex_;
