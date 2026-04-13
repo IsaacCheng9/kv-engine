@@ -143,20 +143,30 @@ void Engine::remove(const std::string &key) {
 }
 
 void Engine::compact_level_zero() {
-  // Ensure L1 exists.
-  if (level_files_.size() < 2) {
-    level_files_.resize(2);
-    next_id_per_level_.resize(2, 0);
-  }
-
-  // Build the current L0 file paths.
+  // Take an exclusive lock briefly to snapshot the L0 file IDs, reserve a new
+  // L1 ID, and ensure L1 exists. Exclusive (not shared) because we modify
+  // next_id_per_level_ and may resize level_files_. After releasing the lock,
+  // readers can still see the old L0 files on disk via level_files_[0] - the
+  // snapshot is just for us.
   std::vector<std::string> l0_paths;
-  for (auto id : level_files_[0]) {
-    l0_paths.push_back(data_dir_ + "/sstable_0_" + std::to_string(id) + ".dat");
+  uint64_t new_l1_id;
+  {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    if (level_files_.size() < 2) {
+      level_files_.resize(2);
+      next_id_per_level_.resize(2, 0);
+    }
+    new_l1_id = next_id_per_level_[1]++;
+    for (auto id : level_files_[0]) {
+      l0_paths.push_back(data_dir_ + "/sstable_0_" + std::to_string(id) +
+                         ".dat");
+    }
   }
 
-  // Fold L0 into L1. Start with the oldest file and merge newer files into it
-  // one at a time, writing immediate files to a temp path.
+  // Run the merge without holding any lock. This is the slow part (seconds for
+  // large SSTables). Readers and concurrent flushes can continue during this
+  // step since we're only touching files on disk and our local snapshot - not
+  // any shared in-memory state.
   std::string accumulator = l0_paths[0];
   std::vector<std::string> temp_paths;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
@@ -166,17 +176,22 @@ void Engine::compact_level_zero() {
     temp_paths.push_back(temp_path);
     accumulator = temp_path;
   }
-
-  // Move the final result to the new L1 file.
-  uint64_t new_l1_id = next_id_per_level_[1]++;
   std::string l1_path =
       data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
   std::filesystem::rename(accumulator, l1_path);
-  level_files_[1].push_back(new_l1_id);
-  level_files_[0].clear();
 
-  // Delete the original L0 files and the temp files, except the one we just
-  // renamed.
+  // Take the exclusive lock again to atomically swap the L0 files for the new
+  // L1 file. Readers see either the pre-swap state (old L0 IDs) or the
+  // post-swap state (new L1 ID) - never a partial state.
+  {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    level_files_[1].push_back(new_l1_id);
+    level_files_[0].clear();
+  }
+
+  // Delete the old files outside the lock. Safe because the vector
+  // swap above means no reader will try to open these paths any more. File
+  // I/O is slow, so keeping this out of the critical section matters.
   for (const auto &path : l0_paths) {
     std::filesystem::remove(path);
   }
