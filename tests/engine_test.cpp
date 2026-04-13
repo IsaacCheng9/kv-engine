@@ -154,6 +154,9 @@ TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
   engine.put("key3", "value3");
   engine.put("key4", "value4");
 
+  // Wait for background compaction to finish before scanning.
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
   // After four flushes, we should have triggered compaction of level zero into
   // level one. Check that the L0 files are gone and the L1 file exists.
   bool l0_files_exist = false;
@@ -189,6 +192,9 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
   engine.put("key2", "value2");
   engine.put("key3", "value3");
   engine.put("key4", "value4");
+
+  // Wait for background compaction to finish before scanning.
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
   // After compaction, all keys should still be retrievable.
   EXPECT_EQ(engine.get("key1"), "value1");
