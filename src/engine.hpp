@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -33,6 +34,9 @@ private:
   std::vector<uint64_t> next_id_per_level_;
   std::thread compaction_thread_;
   std::mutex compaction_mutex_;
+  // Protects shared state accessed by compaction thread (level_files_,
+  // next_id_per_level_). Mutable so const methods (like get) can lock it.
+  mutable std::shared_mutex state_mutex_;
   std::condition_variable compaction_cv_;
   bool compaction_triggered_ = false;
   bool shutdown_ = false;
