@@ -88,21 +88,28 @@ void Engine::flush_if_full() {
   // Write the SSTable to the disk.
   SSTableWriter writer(sstable_path);
   writer.write_memtable(memtable_);
-  memtable_.clear();
-  wal_.clear();
 
-  // Publish the new ID. Take the lock to update the shared state and trigger
-  // compaction if needed - we need the lock to prevent race conditions on the
-  // level_files_ state that the compaction thread reads.
+  // Atomically clear the memtable and publish the new SSTable ID under the
+  // exclusive state lock. Without this, a reader can observe an intermediate
+  // state where the memtable has been cleared but the new SSTable ID isn't yet
+  // in level_files_, returning nullopt for keys that exist on disk.
+  bool should_trigger_compaction = false;
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    memtable_.clear();
+    wal_.clear();
     level_files_[0].push_back(new_id);
-    // Trigger L0 -> L1 compaction if threshold reached.
-    if (level_files_[0].size() >= 4) {
+    should_trigger_compaction = (level_files_[0].size() >= 4);
+  }
+
+  // Trigger compaction outside state_mutex_ to avoid holding both locks at
+  // once (which would deadlock against compact_level_zero).
+  if (should_trigger_compaction) {
+    {
       std::lock_guard<std::mutex> cv_lock(compaction_mutex_);
       compaction_triggered_ = true;
-      compaction_cv_.notify_all();
     }
+    compaction_cv_.notify_all();
   }
 }
 
@@ -114,15 +121,18 @@ void Engine::put(const std::string &key, const std::string &value) {
 }
 
 std::optional<std::string> Engine::get(const std::string &key) const {
-  // Perform multi-level lookups: Memtable -> SSTables (newest to oldest).
+  // Take the shared state lock for the entire lookup so we see a consistent
+  // view of (memtable, level_files_). Without this, a flush can clear the
+  // memtable between our memtable check and our SSTable check, causing us to
+  // miss a key that does in fact exist (just on disk now rather than in
+  // memory).
+  std::shared_lock<std::shared_mutex> lock(state_mutex_);
+
   auto memtable_value = memtable_.get(key);
   if (memtable_value.has_value()) {
     return memtable_value;
   }
 
-  // Take the shared lock to read the level_files_ state for the compaction
-  // thread.
-  std::shared_lock<std::shared_mutex> lock(state_mutex_);
   for (std::size_t level = 0; level < level_files_.size(); ++level) {
     for (auto iterator = level_files_[level].rbegin();
          iterator != level_files_[level].rend(); ++iterator) {
