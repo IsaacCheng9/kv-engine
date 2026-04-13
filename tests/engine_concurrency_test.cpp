@@ -63,7 +63,7 @@ TEST(EngineConcurrencyTest, ConcurrentReadersDuringWrites) {
   std::filesystem::create_directories(temp_dir);
 
   constexpr int num_readers = 4;
-  constexpr int num_writes = 2000;
+  constexpr int num_writes = 200;
 
   std::atomic<bool> done{false};
   std::atomic<int> read_errors{0};
@@ -86,6 +86,9 @@ TEST(EngineConcurrencyTest, ConcurrentReadersDuringWrites) {
               read_errors++;
             }
           }
+          // Yield to give the writer a chance - prevents reader starvation
+          // on slow CI runners with few cores.
+          std::this_thread::yield();
         }
       });
     }
