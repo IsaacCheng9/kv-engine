@@ -62,13 +62,14 @@ cmake --build build_bench
 To save the results to a file while still seeing progress in the terminal:
 
 ```bash
-./build_bench/kv_engine_benchmark | tee docs/YYYY_MM_DD_label.md
+./build_bench/kv_engine_benchmark | tee docs/YYYY_MM_DD_label.txt
 ```
 
 Use a date-prefixed filename and a label describing the milestone (e.g.
-`2026_04_13_baseline.md`, `2026_04_20_post_bloom_filter.md`). Each run produces
-a markdown table of latency percentiles and throughput per scenario, designed to
-be pasted into PR descriptions so feature-level improvements can be attributed.
+`2026_04_13_baseline.txt`, `2026_04_20_post_bloom_filter.txt`). Results are
+stored as `.txt` so the log lines render as-is; the markdown table in the output
+can still be copy-pasted into PR descriptions for feature-level improvement
+comparisons.
 
 ### Scenarios
 
