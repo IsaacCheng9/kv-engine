@@ -67,28 +67,39 @@ Engine::~Engine() {
 void Engine::flush_if_full() {
   if (!memtable_.is_full())
     return;
-  if (level_files_.empty()) {
-    level_files_.resize(1);
-    next_id_per_level_.resize(1, 0);
+
+  // Allocate the ID and build the file path under the lock to ensure we don't
+  // have multiple flushes racing to use the same file name.
+  uint64_t new_id;
+  std::string sstable_path;
+  {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    if (level_files_.empty()) {
+      level_files_.resize(1);
+      next_id_per_level_.resize(1, 0);
+    }
+    new_id = next_id_per_level_[0]++;
+    sstable_path = data_dir_ + "/sstable_0_" + std::to_string(new_id) + ".dat";
   }
 
-  // Use the next available SSTable file name based on an incrementing ID -
-  // we do this because timestamp-based names can have collisions in rare
-  // cases.
-  // We always flush to level 0.
-  uint64_t new_id = next_id_per_level_[0]++;
-  SSTableWriter writer(data_dir_ + "/sstable_0_" + std::to_string(new_id) +
-                       ".dat");
+  // Write the SSTable to the disk.
+  SSTableWriter writer(sstable_path);
   writer.write_memtable(memtable_);
   memtable_.clear();
   wal_.clear();
-  level_files_[0].push_back(new_id);
 
-  // Trigger L0 -> L1 compaction if threshold reached.
-  if (level_files_[0].size() >= 4) {
-    std::lock_guard<std::mutex> lock(compaction_mutex_);
-    compaction_triggered_ = true;
-    compaction_cv_.notify_all();
+  // Publish the new ID. Take the lock to update the shared state and trigger
+  // compaction if needed - we need the lock to prevent race conditions on the
+  // level_files_ state that the compaction thread reads.
+  {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    level_files_[0].push_back(new_id);
+    // Trigger L0 -> L1 compaction if threshold reached.
+    if (level_files_[0].size() >= 4) {
+      std::lock_guard<std::mutex> cv_lock(compaction_mutex_);
+      compaction_triggered_ = true;
+      compaction_cv_.notify_all();
+    }
   }
 }
 
