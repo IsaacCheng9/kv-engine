@@ -41,10 +41,11 @@
 *.dwo
 
 # Build directories
-build/
 cmake-build-*/
+build/
 build_bench/
 build_asan/
+build_tsan/
 
 # IDE
 .cache/
