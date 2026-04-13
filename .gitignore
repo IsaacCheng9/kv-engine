@@ -44,6 +44,7 @@
 build/
 cmake-build-*/
 build_bench/
+build_asan/
 
 # IDE
 .cache/
