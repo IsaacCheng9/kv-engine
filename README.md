@@ -14,10 +14,11 @@ A key-value storage engine in C++20 with LSM-tree architecture.
   and footer for efficient point lookups
 - **Multi-level reads** – memtable first, then SSTables from newest to oldest
   with first match winning and tombstone semantics for deletes
+- **Levelled compaction** – background thread merges L0 SSTables into L1 with
+  fine-grained locking, so reads and flushes continue during compaction
 
 ### Planned Features
 
-- Levelled compaction with background thread and fine-grained locking
 - Bloom filters per SSTable to skip unnecessary disk reads on negative lookups
 - gRPC API layer for remote client access
 - Raft consensus for distributed replication across multiple nodes
@@ -29,8 +30,10 @@ flowchart TD
     client[Client] -->|Put / Get / Delete| engine[Engine]
     engine -->|writes| wal[Write-Ahead Log]
     engine -->|writes / reads| memtable[Memtable<br/>sorted in-memory]
-    memtable -->|flush when full| sstables[SSTables<br/>sorted, immutable on disk]
-    engine -.reads.-> sstables
+    memtable -->|flush when full| l0[L0 SSTables<br/>overlapping key ranges]
+    l0 -->|background compaction| l1[L1 SSTables<br/>merged, deduplicated]
+    engine -.reads.-> l0
+    engine -.reads.-> l1
     wal -.replay on startup.-> memtable
 ```
 
@@ -99,8 +102,9 @@ comparisons.
   Dominated by `fsync` cost on the WAL
 - **get_memtable** – reads served entirely from the memtable (no disk I/O).
   Best-case read path
-- **get_sstable** – reads served from SSTables on disk. Degrades quadratically
-  without levelled compaction since each lookup scans all SSTables
+- **get_sstable** – reads served from SSTables on disk. Each level is scanned
+  from newest to oldest, so without bloom filters every file in a candidate
+  level has to be checked
 - **get_miss** – negative lookups for keys that were never inserted. Worst case
   without bloom filters – every SSTable must be checked
 - **mixed_50_50** – 50% reads / 50% writes with deterministic key selection.
