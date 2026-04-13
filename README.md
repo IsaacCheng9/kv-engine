@@ -47,6 +47,28 @@ cmake --build build
 cd build && ctest --output-on-failure
 ```
 
+The default `-DSANITISE=ON` build enables **AddressSanitizer** (catches
+use-after-free, buffer overflows, leaks) and **UndefinedBehaviorSanitizer**
+(catches signed overflow, null dereferences, etc.).
+
+### ThreadSanitizer
+
+ASan and TSan can't be enabled at the same time, so TSan gets its own build
+directory. Use it whenever changing code that runs across multiple threads
+(background compaction, concurrent writes, locking):
+
+```bash
+cmake -B build_tsan -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+cmake --build build_tsan
+cd build_tsan && ctest --output-on-failure
+```
+
+Single-threaded tests pass green even when there are races that only appear
+under real contention - run the concurrency tests under TSan to flush those out.
+Both ASan and TSan builds run on every push in CI.
+
 ## Benchmarks
 
 Benchmarks are built into a separate binary via an opt-in CMake flag, using a
