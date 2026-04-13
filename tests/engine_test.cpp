@@ -138,5 +138,65 @@ TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
 
   std::filesystem::remove_all(temp_dir);
 }
+
+TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_test_flushing_four_times_triggers_level_compaction");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Small memtable size to trigger flush on each put.
+  Engine engine(temp_dir, 1);
+  engine.put("key1", "value1");
+  engine.put("key2", "value2");
+  engine.put("key3", "value3");
+  engine.put("key4", "value4");
+
+  // After four flushes, we should have triggered compaction of level zero into
+  // level one. Check that the L0 files are gone and the L1 file exists.
+  bool l0_files_exist = false;
+  bool l1_file_exists = false;
+  for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
+    auto filename = entry.path().filename().string();
+    if (filename.starts_with("sstable_0_") &&
+        entry.path().extension() == ".dat") {
+      l0_files_exist = true;
+    }
+    if (filename.starts_with("sstable_1_") &&
+        entry.path().extension() == ".dat") {
+      l1_file_exists = true;
+    }
+  }
+  EXPECT_FALSE(l0_files_exist);
+  EXPECT_TRUE(l1_file_exists);
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_test_get_works_across_levels_after_compaction");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Small memtable size to trigger flush on each put.
+  Engine engine(temp_dir, 1);
+  engine.put("key1", "value1");
+  engine.put("key2", "value2");
+  engine.put("key3", "value3");
+  engine.put("key4", "value4");
+
+  // After compaction, all keys should still be retrievable.
+  EXPECT_EQ(engine.get("key1"), "value1");
+  EXPECT_EQ(engine.get("key2"), "value2");
+  EXPECT_EQ(engine.get("key3"), "value3");
+  EXPECT_EQ(engine.get("key4"), "value4");
+
+  std::filesystem::remove_all(temp_dir);
+}
 } // namespace
 } // namespace kv
