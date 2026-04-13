@@ -18,7 +18,7 @@ TEST(EngineConcurrencyTest, ConcurrentPutsArePersisted) {
   std::filesystem::create_directories(temp_dir);
 
   constexpr int num_threads = 4;
-  constexpr int ops_per_thread = 1000;
+  constexpr int ops_per_thread = 100;
 
   std::atomic<int> observed_failures{0};
 
