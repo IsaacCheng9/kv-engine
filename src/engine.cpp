@@ -4,6 +4,7 @@
 #include "sstable_writer.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -49,6 +50,17 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
       next_id_per_level_[level] = level_files_[level].back() + 1;
     }
   }
+
+  // Start the compaction thread.
+  compaction_thread_ = std::thread(&Engine::compaction_loop, this);
+}
+
+Engine::~Engine() {
+  shutdown_ = true;
+  compaction_cv_.notify_all();
+  if (compaction_thread_.joinable()) {
+    compaction_thread_.join();
+  }
 }
 
 void Engine::flush_if_full() {
@@ -73,7 +85,9 @@ void Engine::flush_if_full() {
 
   // Trigger L0 -> L1 compaction if threshold reached.
   if (level_files_[0].size() >= 4) {
-    compact_level_zero();
+    std::lock_guard<std::mutex> lock(compaction_mutex_);
+    compaction_triggered_ = true;
+    compaction_cv_.notify_all();
   }
 }
 
@@ -132,7 +146,7 @@ void Engine::compact_level_zero() {
   std::vector<std::string> temp_paths;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
     std::string temp_path =
-        data_dir_ + "/sstable_compact_tmp_" + std::to_string(i) + ".dat";
+        data_dir_ + "/compact_tmp_" + std::to_string(i) + ".dat";
     compact_sstables(accumulator, l0_paths[i], temp_path);
     temp_paths.push_back(temp_path);
     accumulator = temp_path;
@@ -155,6 +169,29 @@ void Engine::compact_level_zero() {
     if (temp_path != accumulator) {
       std::filesystem::remove(temp_path);
     }
+  }
+}
+
+void Engine::compaction_loop() {
+  while (true) {
+    // wait() releases the lock and sleeps, then re-acquires the lock when
+    // notified. The predicate guards against spurious wakeups - if we wake
+    // without a real signal, we go back to sleep.
+    std::unique_lock<std::mutex> lock(compaction_mutex_);
+    compaction_cv_.wait(lock,
+                        [this] { return compaction_triggered_ || shutdown_; });
+    if (shutdown_) {
+      break;
+    }
+    compaction_triggered_ = false;
+
+    // Release the mutex before running compaction. Compaction is slow
+    // (seconds), so holding the mutex would block any signals for the next
+    // compaction. The shared state it touches (level_files_) is protected
+    // separately.
+    lock.unlock();
+
+    compact_level_zero();
   }
 }
 
