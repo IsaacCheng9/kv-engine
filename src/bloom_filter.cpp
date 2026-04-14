@@ -1,9 +1,11 @@
 #include "bloom_filter.hpp"
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 std::pair<uint32_t, uint32_t> hash_pair(std::string_view key) {
@@ -72,6 +74,15 @@ bool BloomFilter::might_contain(std::string_view key) const {
     }
   }
   return true;
+}
+
+std::vector<uint8_t> BloomFilter::serialise() const {
+  // 16-byte header + N bytes of bit array.
+  std::vector<uint8_t> buffer(16 + bits_.size());
+  std::memcpy(buffer.data() + 0, &num_bits_, 8);
+  std::memcpy(buffer.data() + 8, &num_hashes_, 8);
+  std::memcpy(buffer.data() + 16, bits_.data(), bits_.size());
+  return buffer;
 }
 
 } // namespace kv
