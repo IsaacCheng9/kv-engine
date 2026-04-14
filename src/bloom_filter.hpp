@@ -16,9 +16,9 @@ public:
   bool might_contain(std::string_view key) const;
 
 private:
-  std::vector<uint8_t> bits_;
   std::size_t num_bits_;
   std::size_t num_hashes_;
+  std::vector<uint8_t> bits_;
 };
 
 } // namespace kv
