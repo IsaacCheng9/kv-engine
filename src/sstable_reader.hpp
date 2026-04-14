@@ -1,13 +1,13 @@
 #ifndef KV_ENGINE_SSTABLE_READER_HPP
 #define KV_ENGINE_SSTABLE_READER_HPP
 
+#include "bloom_filter.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
-
 namespace kv {
 
 class SSTableReader {
@@ -27,6 +27,9 @@ private:
   // compaction-side iteration without relying on the kernel file position
   // (which pread-based get() calls don't touch and must not depend on).
   std::size_t read_position_ = 0;
+  // Let the Bloom filter member start empty, then assign it once we have the
+  // deserialised filter.
+  std::optional<BloomFilter> bloom_filter_;
 };
 } // namespace kv
 
