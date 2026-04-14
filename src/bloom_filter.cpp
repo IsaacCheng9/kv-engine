@@ -10,11 +10,11 @@
 
 namespace {
 std::pair<uint32_t, uint32_t> hash_pair(std::string_view key) {
-  // A bloom filter with k needs k bit indices per key. The naive approach is to
+  // A Bloom filter with k needs k bit indices per key. The naive approach is to
   // run k different hash functions, which is expensive.
   // Instead, use double hashing - get two base hashes, then synthesise k
   // indices as h1 + (i * h2) for i = 0, 1, ..., k - 1. This behaves almost as
-  // well as k independent hashes for bloom filter FPR - one hash call buys k
+  // well as k independent hashes for Bloom filter FPR - one hash call buys k
   // indices.
   uint64_t h = std::hash<std::string_view>{}(key);
   uint32_t h1 = static_cast<uint32_t>(h);

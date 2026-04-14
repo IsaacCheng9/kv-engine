@@ -107,10 +107,10 @@ comparisons.
 - **get_memtable** – reads served entirely from the memtable (no disk I/O).
   Best-case read path
 - **get_sstable** – reads served from SSTables on disk. Each level is scanned
-  from newest to oldest, so without bloom filters every file in a candidate
+  from newest to oldest, so without Bloom filters every file in a candidate
   level has to be checked
 - **get_miss** – negative lookups for keys that were never inserted. Worst case
-  without bloom filters – every SSTable must be checked
+  without Bloom filters – every SSTable must be checked
 - **mixed_50_50** – 50% reads / 50% writes with deterministic key selection.
   Production-like workload
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op
