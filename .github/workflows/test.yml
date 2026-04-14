@@ -8,6 +8,7 @@ jobs:
   asan:
     runs-on: ubuntu-latest
     name: Tests (AddressSanitizer + UBSanitizer)
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +24,7 @@ jobs:
   tsan:
     runs-on: ubuntu-latest
     name: Tests (ThreadSanitizer)
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
