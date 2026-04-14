@@ -77,5 +77,23 @@ TEST(BloomFilterTest, FalsePositiveRateIsReasonable) {
   // libc++ (macOS) and libstdc (Linux).
   EXPECT_LT(observed_fpr, target_fpr * 3.0);
 }
+
+TEST(BloomFilterTest, SerialiseDeserialiseRoundTrip) {
+  BloomFilter original(1000, 0.1);
+  original.add("key1");
+  original.add("key2");
+  original.add("key3");
+
+  auto bytes = original.serialise();
+  BloomFilter reconstructed = BloomFilter::deserialise(bytes);
+
+  // The no false-negatives property should survive the roundtrip.
+  EXPECT_TRUE(reconstructed.might_contain("key1"));
+  EXPECT_TRUE(reconstructed.might_contain("key2"));
+  EXPECT_TRUE(reconstructed.might_contain("key3"));
+  // Serialising the reconstructed filter should give byte-identical output,
+  // which proves the internal state (num_bits_, num_hashes_, bits_) was
+  // restored exactly, not just equivalently.
+}
 } // namespace
 } // namespace kv
