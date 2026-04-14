@@ -1,15 +1,19 @@
+
 #ifndef KV_ENGINE_ENGINE_HPP
 #define KV_ENGINE_ENGINE_HPP
 
 #include "memtable.hpp"
+#include "sstable_reader.hpp"
 #include "wal.hpp"
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace kv {
@@ -31,6 +35,7 @@ private:
   Memtable memtable_;
   WAL wal_;
   std::vector<std::vector<uint64_t>> level_files_;
+  std::unordered_map<std::string, std::unique_ptr<SSTableReader>> readers_;
   std::vector<uint64_t> next_id_per_level_;
   std::thread compaction_thread_;
   std::mutex compaction_mutex_;
