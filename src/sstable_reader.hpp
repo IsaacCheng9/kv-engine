@@ -1,6 +1,7 @@
 #ifndef KV_ENGINE_SSTABLE_READER_HPP
 #define KV_ENGINE_SSTABLE_READER_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -22,6 +23,10 @@ private:
   int fd_;
   std::vector<std::pair<std::string, uint64_t>> index_;
   uint64_t data_end_; // Offset where the index block starts.
+  // Sequential read cursor used by seek_to_first() / next_entry() to support
+  // compaction-side iteration without relying on the kernel file position
+  // (which pread-based get() calls don't touch and must not depend on).
+  std::size_t read_position_ = 0;
 };
 } // namespace kv
 

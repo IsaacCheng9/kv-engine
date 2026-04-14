@@ -1,5 +1,6 @@
 #include "sstable_reader.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -21,32 +22,34 @@ SSTableReader::SSTableReader(const std::string &path) {
   // To load the index, read the footer first to find where the index starts,
   // then walk the index entries until we hit the footer position.
   auto file_size = lseek(fd_, 0, SEEK_END);
-  lseek(fd_, file_size - sizeof(uint64_t), SEEK_SET);
   uint64_t index_offset;
-  read(fd_, &index_offset, sizeof(index_offset));
+  pread(fd_, &index_offset, sizeof(index_offset), file_size - sizeof(uint64_t));
   // Save the offset where the index block starts.
   data_end_ = index_offset;
 
-  lseek(fd_, index_offset, SEEK_SET);
-  while (lseek(fd_, 0, SEEK_CUR) <
-         file_size - static_cast<off_t>(sizeof(uint64_t))) {
+  std::size_t cursor = index_offset;
+  const std::size_t index_end = file_size - sizeof(uint64_t);
+  while (cursor < index_end) {
     uint32_t key_length;
-    auto key_length_bytes_read = read(fd_, &key_length, sizeof(key_length));
-    if (key_length_bytes_read == 0) {
+    if (pread(fd_, &key_length, sizeof(key_length), cursor) == 0) {
       break;
     }
+    cursor += sizeof(key_length);
 
     std::string key(key_length, '\0');
-    auto key_data_bytes_read = read(fd_, key.data(), key.size());
+    auto key_data_bytes_read = pread(fd_, key.data(), key.size(), cursor);
     if (key_data_bytes_read < static_cast<ssize_t>(key_length)) {
       break;
     }
+    cursor += key.size();
 
     uint64_t data_offset;
-    auto data_offset_bytes_read = read(fd_, &data_offset, sizeof(data_offset));
+    auto data_offset_bytes_read =
+        pread(fd_, &data_offset, sizeof(data_offset), cursor);
     if (data_offset_bytes_read == 0) {
       break;
     }
+    cursor += sizeof(data_offset);
 
     index_.emplace_back(std::move(key), data_offset);
   }
@@ -63,47 +66,52 @@ std::optional<std::string> SSTableReader::get(std::string_view key) {
     return std::nullopt;
   }
 
-  uint64_t data_offset = iterator->second;
-  lseek(fd_, data_offset, SEEK_SET);
+  std::size_t cursor = iterator->second;
 
-  // Skip the key.
+  // Skip the key (4-byte length field + key bytes).
   uint32_t key_length;
-  read(fd_, &key_length, sizeof(key_length));
-  lseek(fd_, key_length, SEEK_CUR);
-  // Read the value if it exists.
+  pread(fd_, &key_length, sizeof(key_length), cursor);
+  cursor += sizeof(key_length) + key_length;
+
   uint32_t value_length;
-  read(fd_, &value_length, sizeof(value_length));
+  pread(fd_, &value_length, sizeof(value_length), cursor);
+  cursor += sizeof(value_length);
   // Key was deleted, so a tombstone marker is written instead of the value.
   if (value_length == UINT32_MAX) {
     return std::nullopt;
   }
   std::string value(value_length, '\0');
-  read(fd_, value.data(), value_length);
+  pread(fd_, value.data(), value_length, cursor);
 
   return value;
 }
 
-void SSTableReader::seek_to_first() { lseek(fd_, 0, SEEK_SET); }
+void SSTableReader::seek_to_first() { read_position_ = 0; }
 
 bool SSTableReader::next_entry(std::string &out_key,
                                std::optional<std::string> &out_value) {
-  if (lseek(fd_, 0, SEEK_CUR) >= static_cast<off_t>(data_end_)) {
+  if (read_position_ >= data_end_) {
     return false;
   }
 
   uint32_t key_length;
-  read(fd_, &key_length, sizeof(key_length));
+  pread(fd_, &key_length, sizeof(key_length), read_position_);
+  read_position_ += sizeof(key_length);
+
   out_key.resize(key_length);
-  read(fd_, out_key.data(), key_length);
+  pread(fd_, out_key.data(), key_length, read_position_);
+  read_position_ += key_length;
 
   uint32_t value_length;
-  read(fd_, &value_length, sizeof(value_length));
+  pread(fd_, &value_length, sizeof(value_length), read_position_);
+  read_position_ += sizeof(value_length);
   // Key was deleted, so a tombstone marker exists instead of the value.
   if (value_length == UINT32_MAX) {
     out_value = std::nullopt;
   } else {
     std::string value(value_length, '\0');
-    read(fd_, value.data(), value_length);
+    pread(fd_, value.data(), value_length, read_position_);
+    read_position_ += value_length;
     out_value = std::move(value);
   }
 
