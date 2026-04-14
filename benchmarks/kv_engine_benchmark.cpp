@@ -36,17 +36,14 @@ namespace {
 using clock_type = std::chrono::steady_clock;
 using ns = std::chrono::nanoseconds;
 
-// Operations per scenario. Fast scenarios use a higher count for tighter
-// percentile estimates. Slow scenarios (where the engine has to scan many
-// SSTables for each op) use a smaller count so a full benchmark run
-// finishes in a reasonable time, both on a laptop and in CI. Bump these
-// for the one-off "CV headline numbers" run on the M1 Max at the end of
-// Phase 1.
-constexpr std::size_t put_ops = 10'000;
-constexpr std::size_t get_memtable_ops = 10'000;
-constexpr std::size_t get_sstable_ops = 5'000;
-constexpr std::size_t get_miss_ops = 5'000;
-constexpr std::size_t mixed_ops = 5'000;
+// Operations per scenario. Uniform 250k across all read/write scenarios gives
+// ~1000 samples above any p99 threshold (tight percentile estimates) while
+// keeping a full benchmark run under a minute on an M1 Max.
+constexpr std::size_t put_ops = 250'000;
+constexpr std::size_t get_memtable_ops = 250'000;
+constexpr std::size_t get_sstable_ops = 250'000;
+constexpr std::size_t get_miss_ops = 250'000;
+constexpr std::size_t mixed_ops = 250'000;
 
 // Crash recovery populates the WAL, destroys the engine, and measures the
 // time to reconstruct state on a fresh open. Each op does one full populate
