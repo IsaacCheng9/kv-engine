@@ -52,6 +52,17 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
     }
   }
 
+  // Hydrate the reader cache so every file discovered on disk has a ready
+  // reader. This avoids paying the open + footer + index cost on the first
+  // get() after re-open.
+  for (std::size_t level = 0; level < level_files_.size(); ++level) {
+    for (uint64_t id : level_files_[level]) {
+      auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
+                          "_" + std::to_string(id) + ".dat";
+      readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
+    }
+  }
+
   // Start the compaction thread.
   compaction_thread_ = std::thread(&Engine::compaction_loop, this);
 }
