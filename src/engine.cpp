@@ -156,8 +156,7 @@ std::optional<std::string> Engine::get(const std::string &key) const {
          iterator != level_files_[level].rend(); ++iterator) {
       auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
                           "_" + std::to_string(*iterator) + ".dat";
-      SSTableReader reader(sstable_path);
-      auto sstable_value = reader.get(key);
+      auto sstable_value = readers_.at(sstable_path)->get(key);
       if (sstable_value.has_value()) {
         return sstable_value;
       }
