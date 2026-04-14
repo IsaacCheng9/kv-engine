@@ -100,6 +100,11 @@ void Engine::flush_if_full() {
   SSTableWriter writer(sstable_path);
   writer.write_memtable(memtable_);
 
+  // Construct the reader outside the lock (does I/O) to avoid blocking
+  // concurrent gets while we do the work of opening the file and reading the
+  // footer + index.
+  auto new_reader = std::make_unique<SSTableReader>(sstable_path);
+
   // Atomically clear the memtable and publish the new SSTable ID under the
   // exclusive state lock. Without this, a reader can observe an intermediate
   // state where the memtable has been cleared but the new SSTable ID isn't yet
@@ -110,6 +115,7 @@ void Engine::flush_if_full() {
     memtable_.clear();
     wal_.clear();
     level_files_[0].push_back(new_id);
+    readers_[sstable_path] = std::move(new_reader);
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
