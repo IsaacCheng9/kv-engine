@@ -42,17 +42,25 @@ BloomFilter::BloomFilter(std::size_t expected_entries,
 }
 
 void BloomFilter::add(std::string_view key) {
+  // Set k bits in the array - the key's 'fingerprint'. might_contain() will
+  // check these same bits to test membership later.
   auto [h1, h2] = hash_pair(key);
   for (std::size_t i = 0; i < num_hashes_; ++i) {
+    // Synthesise the i-th hash as h1 + i * h2 (double hashing).
     std::size_t combined_hash = h1 + (i * h2);
     std::size_t bit_index = combined_hash % num_bits_;
     std::size_t byte_index = bit_index / 8;
     std::size_t bit_offset = bit_index % 8;
+    // OR-assign sets just this bit, leaves the other 7 bits in the byte alone
+    // (so other keys that land in the same byte don't get clobbered).
     bits_[byte_index] |= (1 << bit_offset);
   }
 }
 
 bool BloomFilter::might_contain(std::string_view key) const {
+  // Recompute the key's k-bit fingerprint. Any zero bit means the key was
+  // definitely never added (no false negatives). All bits set means the key
+  // was probably added (small false positive rate, controlled at construction).
   auto [h1, h2] = hash_pair(key);
   for (std::size_t i = 0; i < num_hashes_; ++i) {
     std::size_t combined_hash = h1 + (i * h2);

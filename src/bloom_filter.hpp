@@ -13,6 +13,9 @@ public:
   explicit BloomFilter(std::size_t expected_entries,
                        double false_positive_rate);
   void add(std::string_view key);
+  // Probabilistic set membership test. `might_contain(key)` returns false if
+  // key was definitely never added (no false negatives) and true if key was
+  // probably added (small false positive rate controlled at construction).
   bool might_contain(std::string_view key) const;
 
 private:
