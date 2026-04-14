@@ -3,6 +3,7 @@
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -216,6 +217,9 @@ void Engine::compact_level_zero() {
   std::string l1_path =
       data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
   std::filesystem::rename(accumulator, l1_path);
+  // Construct the reader outside the lock (file I/O). Same rule as
+  // flush_if_full: in-memory mutations inside the lock, I/O outside.
+  auto new_l1_reader = std::make_unique<SSTableReader>(l1_path);
 
   // Take the exclusive lock again to atomically swap the L0 files for the new
   // L1 file. Readers see either the pre-swap state (old L0 IDs) or the
@@ -223,9 +227,16 @@ void Engine::compact_level_zero() {
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     level_files_[1].push_back(new_l1_id);
+    readers_[l1_path] = std::move(new_l1_reader);
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
     });
+    // Remove readers for the retired L0 files. The unique_ptr destructors close
+    // the fds, but do it under the lock so readers_ stays in sync with
+    // level_files_.
+    for (const auto &path : l0_paths) {
+      readers_.erase(path);
+    }
   }
 
   // Delete the old files outside the lock. Safe because the vector
