@@ -23,6 +23,7 @@ add_library(kv_engine
     src/sstable_reader.cpp
     src/sstable_writer.cpp
     src/wal.cpp
+    src/bloom_filter.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
 target_link_libraries(kv_engine PRIVATE z)
