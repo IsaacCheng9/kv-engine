@@ -59,12 +59,12 @@ TEST(BloomFilterTest, FalsePositiveRateIsReasonable) {
   constexpr std::size_t n = 10000;
   constexpr double target_fpr = 0.01;
   BloomFilter filter(n, target_fpr);
-  for (int i = 0; i < n; ++i) {
+  for (std::size_t i = 0; i < n; ++i) {
     filter.add("key" + std::to_string(i));
   }
 
   std::size_t fp_count = 0;
-  for (int i = 0; i < n; ++i) {
+  for (std::size_t i = 0; i < n; ++i) {
     if (filter.might_contain("other" + std::to_string(i))) {
       fp_count++;
     }

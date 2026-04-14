@@ -47,6 +47,7 @@ FetchContent_MakeAvailable(googletest)
 # Tests
 enable_testing()
 add_executable(kv_engine_tests
+    tests/bloom_filter_test.cpp
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_test.cpp
