@@ -53,7 +53,17 @@ void BloomFilter::add(std::string_view key) {
 }
 
 bool BloomFilter::might_contain(std::string_view key) const {
-  // Implementation for checking if a key might be in the Bloom filter
+  auto [h1, h2] = hash_pair(key);
+  for (std::size_t i = 0; i < num_hashes_; ++i) {
+    std::size_t combined_hash = h1 + (i * h2);
+    std::size_t bit_index = combined_hash % num_bits_;
+    std::size_t byte_index = bit_index / 8;
+    std::size_t bit_offset = bit_index % 8;
+    if ((bits_[byte_index] & (1 << bit_offset)) == 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace kv
