@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -77,12 +78,31 @@ bool BloomFilter::might_contain(std::string_view key) const {
 }
 
 std::vector<uint8_t> BloomFilter::serialise() const {
-  // 16-byte header + N bytes of bit array.
-  std::vector<uint8_t> buffer(16 + bits_.size());
-  std::memcpy(buffer.data() + 0, &num_bits_, 8);
-  std::memcpy(buffer.data() + 8, &num_hashes_, 8);
-  std::memcpy(buffer.data() + 16, bits_.data(), bits_.size());
+  // Header: num_bits_ (size_t) + num_hashes_ (size_t), then the bit array.
+  constexpr std::size_t header_size = sizeof(num_bits_) + sizeof(num_hashes_);
+  std::vector<uint8_t> buffer(header_size + bits_.size());
+  std::memcpy(buffer.data(), &num_bits_, sizeof(num_bits_));
+  std::memcpy(buffer.data() + sizeof(num_bits_), &num_hashes_,
+              sizeof(num_hashes_));
+  std::memcpy(buffer.data() + header_size, bits_.data(), bits_.size());
   return buffer;
 }
 
+BloomFilter::BloomFilter(std::size_t num_bits, std::size_t num_hashes,
+                         std::vector<uint8_t> bits)
+    : num_bits_(num_bits), num_hashes_(num_hashes), bits_(std::move(bits)) {}
+
+BloomFilter BloomFilter::deserialise(std::span<const uint8_t> data) {
+  if (data.size() < 16) {
+    throw std::runtime_error(
+        "Data is too short to contain Bloom filter header");
+  }
+
+  std::size_t num_bits;
+  std::size_t num_hashes;
+  std::memcpy(&num_bits, data.data() + 0, 8);
+  std::memcpy(&num_hashes, data.data() + 8, 8);
+  std::vector<uint8_t> bits(data.begin() + 16, data.end());
+  return BloomFilter(num_bits, num_hashes, std::move(bits));
+}
 } // namespace kv
