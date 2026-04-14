@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -18,7 +19,14 @@ public:
   // probably added (small false positive rate controlled at construction).
   bool might_contain(std::string_view key) const;
 
+  // Serialise the filter's state to a byte array for on-disk storage.
+  std::vector<uint8_t> serialise() const;
+  // Reconstruct a Bloom filter from its serialised byte array form.
+  static BloomFilter deserialise(std::span<const uint8_t> data);
+
 private:
+  BloomFilter(std::size_t num_bits, std::size_t num_hashes,
+              std::vector<uint8_t> bits);
   std::size_t num_bits_;
   std::size_t num_hashes_;
   std::vector<uint8_t> bits_;
