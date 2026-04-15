@@ -7,8 +7,16 @@ on:
 jobs:
   benchmarks:
     runs-on: ubuntu-latest
+    env:
+      CC: gcc-14
+      CXX: g++-14
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
 
       - name: Configure CMake (release + benchmarks)
         run: cmake -B build_bench -DBENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
