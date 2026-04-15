@@ -256,7 +256,7 @@ void Engine::compact_level_zero() {
                                 readers_[l1_path]->get_max_key()};
     }
     std::erase_if(level_files_[0], [&](uint64_t id) {
-      return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
+      return std::ranges::contains(l0_ids, id);
     });
     // Remove readers for the retired L0 files. The unique_ptr destructors close
     // the fds, but do it under the lock so readers_ stays in sync with
