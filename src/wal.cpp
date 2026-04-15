@@ -2,6 +2,7 @@
 #include "memtable.hpp"
 #include <cstdint>
 #include <fcntl.h>
+#include <format>
 #include <print>
 #include <stdexcept>
 #include <string>
@@ -179,8 +180,8 @@ void WAL::replay(Memtable &memtable) {
 
       memtable.remove(std::move(key));
     } else {
-      throw std::runtime_error("Unknown operation type in WAL: " +
-                               std::to_string(op_type));
+      throw std::runtime_error(
+          std::format("Unknown operation type in WAL: {}", op_type));
     }
   }
 }

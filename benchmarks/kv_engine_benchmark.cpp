@@ -22,8 +22,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
+#include <format>
 #include <print>
 #include <random>
 #include <string>
@@ -83,9 +83,7 @@ Stats compute_stats(std::vector<uint64_t> &latencies_ns, double total_s) {
 
 // Deterministic key generation so put and get phases reference the same keys.
 std::string make_key(std::size_t index) {
-  char buf[24];
-  std::snprintf(buf, sizeof(buf), "key_%012zu", index);
-  return std::string(buf);
+  return std::format("key_{:012}", index);
 }
 
 std::string make_value() { return std::string(value_bytes, 'v'); }

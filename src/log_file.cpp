@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fcntl.h>
+#include <format>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -49,8 +50,8 @@ std::vector<std::string> LogFile::read_all() {
     std::string entry(length, '\0');
     auto data_bytes_read = read(fd_, entry.data(), entry.size());
     if (data_bytes_read < static_cast<ssize_t>(length)) {
-      throw std::runtime_error("Truncated read: expected " +
-                               std::to_string(length) + " bytes");
+      throw std::runtime_error(
+          std::format("Truncated read: expected {} bytes", length));
     }
     entries.push_back(std::move(entry));
   }
