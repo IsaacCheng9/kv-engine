@@ -21,7 +21,7 @@ void Store::clear() { data_.clear(); }
 std::size_t Store::size() const { return data_.size(); }
 
 bool Store::contains(const std::string &key) const {
-  return data_.find(key) != data_.end();
+  return data_.contains(key);
 }
 
 std::vector<std::string> Store::keys() const {
