@@ -17,6 +17,13 @@ public:
   explicit SSTableWriter(const std::string &path);
   ~SSTableWriter();
 
+  // Non-copyable and non-movable: owns a raw file descriptor, so a copy or
+  // move would double-close on destruction.
+  SSTableWriter(const SSTableWriter &) = delete;
+  SSTableWriter &operator=(const SSTableWriter &) = delete;
+  SSTableWriter(SSTableWriter &&) = delete;
+  SSTableWriter &operator=(SSTableWriter &&) = delete;
+
   void add_entry(std::string_view key, std::optional<std::string_view> value);
   void finalise();
 

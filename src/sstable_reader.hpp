@@ -15,6 +15,13 @@ public:
   explicit SSTableReader(const std::string &path);
   ~SSTableReader();
 
+  // Non-copyable and non-movable: owns a raw file descriptor, so a copy or
+  // move would double-close on destruction.
+  SSTableReader(const SSTableReader &) = delete;
+  SSTableReader &operator=(const SSTableReader &) = delete;
+  SSTableReader(SSTableReader &&) = delete;
+  SSTableReader &operator=(SSTableReader &&) = delete;
+
   [[nodiscard]] std::optional<std::string> get(std::string_view key);
   void seek_to_first();
   [[nodiscard]] bool next_entry(std::string &out_key,
