@@ -2,7 +2,7 @@
 #include "memtable.hpp"
 #include <cstdint>
 #include <fcntl.h>
-#include <iostream>
+#include <print>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -161,8 +161,8 @@ void WAL::replay(Memtable &memtable) {
       uint32_t stored_checksum;
       read(fd_, &stored_checksum, sizeof(stored_checksum));
       if (checksum != stored_checksum) {
-        std::cerr
-            << "WAL replay: checksum mismatch, stopping at corrupt node.\n";
+        std::println(
+            stderr, "WAL replay: checksum mismatch, stopping at corrupt node.");
         break;
       }
 
@@ -172,8 +172,8 @@ void WAL::replay(Memtable &memtable) {
       uint32_t stored_checksum;
       read(fd_, &stored_checksum, sizeof(stored_checksum));
       if (checksum != stored_checksum) {
-        std::cerr
-            << "WAL replay: checksum mismatch, stopping at corrupt node.\n";
+        std::println(
+            stderr, "WAL replay: checksum mismatch, stopping at corrupt node.");
         break;
       }
 

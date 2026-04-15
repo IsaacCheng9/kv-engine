@@ -24,8 +24,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
-#include <iomanip>
-#include <iostream>
+#include <print>
 #include <random>
 #include <string>
 #include <vector>
@@ -266,21 +265,17 @@ Stats bench_crash_recovery() {
 
 void print_markdown_table(
     const std::vector<std::pair<std::string, Stats>> &results) {
-  std::cout << "\n";
-  std::cout << "| Scenario          | Ops/sec   | p50 (us) | p99 (us) | "
-               "Total (ms) |\n";
-  std::cout << "|-------------------|-----------|----------|----------|"
-               "------------|\n";
+  std::println("");
+  std::println("| Scenario          | Ops/sec   | p50 (us) | p99 (us) | "
+               "Total (ms) |");
+  std::println("|-------------------|-----------|----------|----------|"
+               "------------|");
   for (const auto &[name, stats] : results) {
-    std::cout << "| " << std::left << std::setw(17) << name << " | "
-              << std::right << std::setw(9) << std::fixed
-              << std::setprecision(0) << stats.ops_per_sec << " | "
-              << std::setw(8) << std::setprecision(2) << stats.p50_us << " | "
-              << std::setw(8) << std::setprecision(2) << stats.p99_us << " | "
-              << std::setw(10) << std::setprecision(2) << stats.total_ms
-              << " |\n";
+    std::println("| {:<17} | {:>9.0f} | {:>8.2f} | {:>8.2f} | {:>10.2f} |",
+                 name, stats.ops_per_sec, stats.p50_us, stats.p99_us,
+                 stats.total_ms);
   }
-  std::cout << "\n";
+  std::println("");
 }
 
 } // namespace
@@ -288,25 +283,20 @@ void print_markdown_table(
 template <typename Fn>
 void run_and_record(const std::string &name, Fn fn,
                     std::vector<std::pair<std::string, Stats>> &results) {
-  std::cout << "Running " << name << "...\n" << std::flush;
+  std::println("Running {}...", name);
   auto stats = fn();
-  // Use the workload time captured inside the benchmark, not the full
-  // function elapsed time - the latter includes scenario setup (pre-loading
-  // keys, filling the WAL, etc.) which is not what we're measuring.
-  std::cout << "  " << name << " finished in " << std::fixed
-            << std::setprecision(2) << stats.total_ms / 1000.0 << "s\n"
-            << std::flush;
+  std::println("  {} finished in {:.2f}s", name, stats.total_ms / 1000.0);
   results.emplace_back(name, stats);
 }
 
 int main() {
-  std::cout << "kv-engine benchmark\n";
-  std::cout << "  put            (" << put_ops << " ops)\n";
-  std::cout << "  get_memtable   (" << get_memtable_ops << " ops)\n";
-  std::cout << "  get_sstable    (" << get_sstable_ops << " ops)\n";
-  std::cout << "  get_miss       (" << get_miss_ops << " ops)\n";
-  std::cout << "  mixed_50_50    (" << mixed_ops << " ops)\n";
-  std::cout << "  crash_recovery (" << crash_recovery_ops << " ops)\n\n";
+  std::println("kv-engine benchmark");
+  std::println("  put            ({} ops)", put_ops);
+  std::println("  get_memtable   ({} ops)", get_memtable_ops);
+  std::println("  get_sstable    ({} ops)", get_sstable_ops);
+  std::println("  get_miss       ({} ops)", get_miss_ops);
+  std::println("  mixed_50_50    ({} ops)", mixed_ops);
+  std::println("  crash_recovery ({} ops)\n", crash_recovery_ops);
 
   const auto suite_start = clock_type::now();
 
@@ -320,9 +310,9 @@ int main() {
 
   const auto suite_elapsed =
       std::chrono::duration<double>(clock_type::now() - suite_start).count();
-  std::cout << "\nBenchmark suite finished in " << std::fixed
-            << std::setprecision(2) << suite_elapsed << "s (includes scenario "
-            << "setup + measurement).\n";
+  std::println("\nBenchmark suite finished in {:.2f}s (includes scenario "
+               "setup + measurement).",
+               suite_elapsed);
 
   print_markdown_table(results);
   return 0;
