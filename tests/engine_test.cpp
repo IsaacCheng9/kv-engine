@@ -9,6 +9,27 @@ namespace kv {
 
 namespace {
 
+// Polls for an L1 SSTable file in `dir`, returning true if one appears before
+// the deadline. Used to synchronise with the background compaction thread -
+// fixed sleeps are flaky because compaction latency varies with sanitiser
+// instrumentation (TSan is 5-10x slower than ASan) and CI runner load.
+bool wait_for_l1_sstable(
+    const std::string &dir,
+    std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
+      auto filename = entry.path().filename().string();
+      if (filename.starts_with("sstable_1_") &&
+          entry.path().extension() == ".dat") {
+        return true;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
 TEST(EngineTest, PutAndGet) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_put_get");
@@ -170,7 +191,8 @@ TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
     engine.put("key4", "value4");
 
     // Wait for background compaction to finish before scanning.
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
+        << "Compaction did not produce an L1 file within the timeout";
 
     // After four flushes, we should have triggered compaction of level zero
     // into level one. Check that the L0 files are gone and the L1 file exists.
@@ -211,7 +233,8 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
     engine.put("key4", "value4");
 
     // Wait for background compaction to finish before scanning.
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
+        << "Compaction did not produce an L1 file within the timeout";
 
     // After compaction, all keys should still be retrievable.
     EXPECT_EQ(engine.get("key1"), "value1");
@@ -237,8 +260,10 @@ TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
       engine.put("key" + std::to_string(i), "value" + std::to_string(i));
     }
 
-    // Let the background thread drain any outstanding compactions.
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    // Let the background thread run at least one compaction so the test
+    // exercises the post-compaction state.
+    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
+        << "Compaction did not produce an L1 file within the timeout";
 
     for (int i = 0; i < 32; ++i) {
       EXPECT_EQ(engine.get("key" + std::to_string(i)),
