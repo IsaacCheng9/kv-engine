@@ -217,10 +217,16 @@ void Engine::compact_level_zero() {
   // any shared in-memory state.
   std::string accumulator = l0_paths[0];
   std::vector<std::string> temp_paths;
-  // Check if the compaction produced any live entries. If not, we can skip the
-  // rest of the compaction and delete the temporary files.
+  // Track whether the merge chain has produced any live entries. If a step
+  // produces none, skip merging with the empty result and adopt the next L0
+  // file directly - this avoids opening an empty SSTable as a reader.
   bool accumulator_has_entries = true;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
+    if (!accumulator_has_entries) {
+      accumulator = l0_paths[i];
+      accumulator_has_entries = true;
+      continue;
+    }
     std::string temp_path =
         data_dir_ + "/compact_tmp_" + std::to_string(i) + ".dat";
     accumulator_has_entries =
