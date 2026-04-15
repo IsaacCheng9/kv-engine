@@ -48,7 +48,7 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
 
   // For each level, sort the files and set the next ID to the highest ID + 1.
   for (size_t level = 0; level < level_files_.size(); ++level) {
-    std::sort(level_files_[level].begin(), level_files_[level].end());
+    std::ranges::sort(level_files_[level]);
     if (!level_files_[level].empty()) {
       next_id_per_level_[level] = level_files_[level].back() + 1;
     }
