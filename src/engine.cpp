@@ -3,6 +3,7 @@
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -52,6 +53,17 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
     }
   }
 
+  // Hydrate the reader cache so every file discovered on disk has a ready
+  // reader. This avoids paying the open + footer + index cost on the first
+  // get() after re-open.
+  for (std::size_t level = 0; level < level_files_.size(); ++level) {
+    for (uint64_t id : level_files_[level]) {
+      auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
+                          "_" + std::to_string(id) + ".dat";
+      readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
+    }
+  }
+
   // Start the compaction thread.
   compaction_thread_ = std::thread(&Engine::compaction_loop, this);
 }
@@ -89,6 +101,11 @@ void Engine::flush_if_full() {
   SSTableWriter writer(sstable_path);
   writer.write_memtable(memtable_);
 
+  // Construct the reader outside the lock (does I/O) to avoid blocking
+  // concurrent gets while we do the work of opening the file and reading the
+  // footer + index.
+  auto new_reader = std::make_unique<SSTableReader>(sstable_path);
+
   // Atomically clear the memtable and publish the new SSTable ID under the
   // exclusive state lock. Without this, a reader can observe an intermediate
   // state where the memtable has been cleared but the new SSTable ID isn't yet
@@ -99,6 +116,7 @@ void Engine::flush_if_full() {
     memtable_.clear();
     wal_.clear();
     level_files_[0].push_back(new_id);
+    readers_[sstable_path] = std::move(new_reader);
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
@@ -138,8 +156,7 @@ std::optional<std::string> Engine::get(const std::string &key) const {
          iterator != level_files_[level].rend(); ++iterator) {
       auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
                           "_" + std::to_string(*iterator) + ".dat";
-      SSTableReader reader(sstable_path);
-      auto sstable_value = reader.get(key);
+      auto sstable_value = readers_.at(sstable_path)->get(key);
       if (sstable_value.has_value()) {
         return sstable_value;
       }
@@ -199,6 +216,9 @@ void Engine::compact_level_zero() {
   std::string l1_path =
       data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
   std::filesystem::rename(accumulator, l1_path);
+  // Construct the reader outside the lock (file I/O). Same rule as
+  // flush_if_full: in-memory mutations inside the lock, I/O outside.
+  auto new_l1_reader = std::make_unique<SSTableReader>(l1_path);
 
   // Take the exclusive lock again to atomically swap the L0 files for the new
   // L1 file. Readers see either the pre-swap state (old L0 IDs) or the
@@ -206,9 +226,16 @@ void Engine::compact_level_zero() {
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     level_files_[1].push_back(new_l1_id);
+    readers_[l1_path] = std::move(new_l1_reader);
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
     });
+    // Remove readers for the retired L0 files. The unique_ptr destructors close
+    // the fds, but do it under the lock so readers_ stays in sync with
+    // level_files_.
+    for (const auto &path : l0_paths) {
+      readers_.erase(path);
+    }
   }
 
   // Delete the old files outside the lock. Safe because the vector

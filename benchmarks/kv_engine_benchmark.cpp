@@ -23,7 +23,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -36,17 +35,14 @@ namespace {
 using clock_type = std::chrono::steady_clock;
 using ns = std::chrono::nanoseconds;
 
-// Operations per scenario. Fast scenarios use a higher count for tighter
-// percentile estimates. Slow scenarios (where the engine has to scan many
-// SSTables for each op) use a smaller count so a full benchmark run
-// finishes in a reasonable time, both on a laptop and in CI. Bump these
-// for the one-off "CV headline numbers" run on the M1 Max at the end of
-// Phase 1.
-constexpr std::size_t put_ops = 10'000;
-constexpr std::size_t get_memtable_ops = 10'000;
-constexpr std::size_t get_sstable_ops = 5'000;
-constexpr std::size_t get_miss_ops = 5'000;
-constexpr std::size_t mixed_ops = 5'000;
+// Operations per scenario. Uniform 250k across all read/write scenarios gives
+// ~1000 samples above any p99 threshold (tight percentile estimates) while
+// keeping a full benchmark run under a minute on an M1 Max.
+constexpr std::size_t put_ops = 250'000;
+constexpr std::size_t get_memtable_ops = 250'000;
+constexpr std::size_t get_sstable_ops = 250'000;
+constexpr std::size_t get_miss_ops = 250'000;
+constexpr std::size_t mixed_ops = 250'000;
 
 // Crash recovery populates the WAL, destroys the engine, and measures the
 // time to reconstruct state on a fresh open. Each op does one full populate
@@ -71,7 +67,7 @@ struct Stats {
   double ops_per_sec;
   double p50_us;
   double p99_us;
-  double total_s;
+  double total_ms;
 };
 
 Stats compute_stats(std::vector<uint64_t> &latencies_ns, double total_s) {
@@ -82,7 +78,7 @@ Stats compute_stats(std::vector<uint64_t> &latencies_ns, double total_s) {
       static_cast<double>(latencies_ns.size()) / total_s,
       static_cast<double>(p50) / 1000.0,
       static_cast<double>(p99) / 1000.0,
-      total_s,
+      total_s * 1000.0,
   };
 }
 
@@ -268,16 +264,16 @@ void print_markdown_table(
     const std::vector<std::pair<std::string, Stats>> &results) {
   std::cout << "\n";
   std::cout << "| Scenario          | Ops/sec   | p50 (us) | p99 (us) | "
-               "Total (s) |\n";
+               "Total (ms) |\n";
   std::cout << "|-------------------|-----------|----------|----------|"
-               "-----------|\n";
+               "------------|\n";
   for (const auto &[name, stats] : results) {
     std::cout << "| " << std::left << std::setw(17) << name << " | "
               << std::right << std::setw(9) << std::fixed
               << std::setprecision(0) << stats.ops_per_sec << " | "
               << std::setw(8) << std::setprecision(2) << stats.p50_us << " | "
               << std::setw(8) << std::setprecision(2) << stats.p99_us << " | "
-              << std::setw(9) << std::setprecision(2) << stats.total_s
+              << std::setw(10) << std::setprecision(2) << stats.total_ms
               << " |\n";
   }
   std::cout << "\n";
@@ -285,25 +281,16 @@ void print_markdown_table(
 
 } // namespace
 
-std::string timestamp_now() {
-  const auto now = std::chrono::system_clock::now();
-  const auto time_t_now = std::chrono::system_clock::to_time_t(now);
-  char buf[16];
-  std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&time_t_now));
-  return std::string(buf);
-}
-
 template <typename Fn>
 void run_and_record(const std::string &name, Fn fn,
                     std::vector<std::pair<std::string, Stats>> &results) {
-  const auto start = clock_type::now();
-  std::cout << "[" << timestamp_now() << "] Running " << name << "...\n"
-            << std::flush;
+  std::cout << "Running " << name << "...\n" << std::flush;
   auto stats = fn();
-  const auto elapsed =
-      std::chrono::duration<double>(clock_type::now() - start).count();
-  std::cout << "[" << timestamp_now() << "]   " << name << " finished in "
-            << std::fixed << std::setprecision(2) << elapsed << "s\n"
+  // Use the workload time captured inside the benchmark, not the full
+  // function elapsed time - the latter includes scenario setup (pre-loading
+  // keys, filling the WAL, etc.) which is not what we're measuring.
+  std::cout << "  " << name << " finished in " << std::fixed
+            << std::setprecision(2) << stats.total_ms / 1000.0 << "s\n"
             << std::flush;
   results.emplace_back(name, stats);
 }
@@ -317,6 +304,8 @@ int main() {
   std::cout << "  mixed_50_50    (" << mixed_ops << " ops)\n";
   std::cout << "  crash_recovery (" << crash_recovery_ops << " ops)\n\n";
 
+  const auto suite_start = clock_type::now();
+
   std::vector<std::pair<std::string, Stats>> results;
   run_and_record("put", bench_put, results);
   run_and_record("get_memtable", bench_get_memtable, results);
@@ -324,6 +313,12 @@ int main() {
   run_and_record("get_miss", bench_get_miss, results);
   run_and_record("mixed_50_50", bench_mixed_50_50, results);
   run_and_record("crash_recovery", bench_crash_recovery, results);
+
+  const auto suite_elapsed =
+      std::chrono::duration<double>(clock_type::now() - suite_start).count();
+  std::cout << "\nBenchmark suite finished in " << std::fixed
+            << std::setprecision(2) << suite_elapsed << "s (includes scenario "
+            << "setup + measurement).\n";
 
   print_markdown_table(results);
   return 0;
