@@ -13,12 +13,12 @@ namespace kv {
 class Store {
 public:
   void put(const std::string &key, const std::string &value);
-  std::optional<std::string> get(const std::string &key) const;
+  [[nodiscard]] std::optional<std::string> get(const std::string &key) const;
   bool remove(const std::string &key);
   void clear();
-  std::size_t size() const;
-  bool contains(const std::string &key) const;
-  std::vector<std::string> keys() const;
+  [[nodiscard]] std::size_t size() const;
+  [[nodiscard]] bool contains(const std::string &key) const;
+  [[nodiscard]] std::vector<std::string> keys() const;
 
 private:
   std::unordered_map<std::string, std::string> data_;
