@@ -20,10 +20,14 @@ A key-value storage engine in C++20 with LSM-tree architecture.
   resident for each file's lifetime, and `pread`-based positioned reads make
   them safe to share across concurrent `get()` callers; eliminates the open +
   footer + index parse that would otherwise happen on every lookup
+- **Per-`SSTable` Bloom filter** – probabilistic membership test built during
+  `finalise()` and stored in a new block between the index and footer; on
+  `get()`, the filter is consulted before the binary search to short-circuit
+  keys guaranteed not to be in the file (no false negatives, ~1% false
+  positive rate)
 
 ### Planned Features
 
-- Bloom filters per SSTable to skip unnecessary disk reads on negative lookups
 - gRPC API layer for remote client access
 - Raft consensus for distributed replication across multiple nodes
 
@@ -107,10 +111,12 @@ comparisons.
 - **get_memtable** – reads served entirely from the memtable (no disk I/O).
   Best-case read path
 - **get_sstable** – reads served from SSTables on disk. Each level is scanned
-  from newest to oldest, so without Bloom filters every file in a candidate
-  level has to be checked
-- **get_miss** – negative lookups for keys that were never inserted. Worst case
-  without Bloom filters – every SSTable must be checked
+  from newest to oldest; the Bloom filter short-circuits files whose filter
+  rules the key out, otherwise an in-memory binary search locates the entry
+- **get_miss** – negative lookups for keys that were never inserted. Queries
+  use indices past the inserted range (`key_000000250000`...) so they share
+  the `"key_000000"` prefix with stored keys, exercising the Bloom filter
+  against a realistic miss workload rather than trivially-rejected keys
 - **mixed_50_50** – 50% reads / 50% writes with deterministic key selection.
   Production-like workload
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op
