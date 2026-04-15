@@ -19,8 +19,8 @@ public:
   void seek_to_first();
   [[nodiscard]] bool next_entry(std::string &out_key,
                                 std::optional<std::string> &out_value);
-  [[nodiscard]] const std::string &get_min_key() const;
-  [[nodiscard]] const std::string &get_max_key() const;
+  [[nodiscard]] const std::string &min_key() const;
+  [[nodiscard]] const std::string &max_key() const;
 
 private:
   int fd_;

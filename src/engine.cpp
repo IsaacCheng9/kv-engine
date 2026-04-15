@@ -62,8 +62,8 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
       auto sstable_path =
           std::format("{}/sstable_{}_{}.dat", data_dir_, level, id);
       readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
-      range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
-                                     readers_[sstable_path]->get_max_key()};
+      range_bounds_[sstable_path] = {readers_[sstable_path]->min_key(),
+                                     readers_[sstable_path]->max_key()};
     }
   }
 
@@ -120,8 +120,8 @@ void Engine::flush_if_full() {
     wal_.clear();
     level_files_[0].push_back(new_id);
     readers_[sstable_path] = std::move(new_reader);
-    range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
-                                   readers_[sstable_path]->get_max_key()};
+    range_bounds_[sstable_path] = {readers_[sstable_path]->min_key(),
+                                   readers_[sstable_path]->max_key()};
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
@@ -251,8 +251,8 @@ void Engine::compact_level_zero() {
     if (accumulator_has_entries) {
       level_files_[1].push_back(new_l1_id);
       readers_[l1_path] = std::move(new_l1_reader);
-      range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
-                                readers_[l1_path]->get_max_key()};
+      range_bounds_[l1_path] = {readers_[l1_path]->min_key(),
+                                readers_[l1_path]->max_key()};
     }
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::ranges::contains(l0_ids, id);
