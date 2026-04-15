@@ -61,6 +61,8 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
       auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
                           "_" + std::to_string(id) + ".dat";
       readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
+      range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
+                                     readers_[sstable_path]->get_max_key()};
     }
   }
 
@@ -117,6 +119,8 @@ void Engine::flush_if_full() {
     wal_.clear();
     level_files_[0].push_back(new_id);
     readers_[sstable_path] = std::move(new_reader);
+    range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
+                                   readers_[sstable_path]->get_max_key()};
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
@@ -227,6 +231,8 @@ void Engine::compact_level_zero() {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     level_files_[1].push_back(new_l1_id);
     readers_[l1_path] = std::move(new_l1_reader);
+    range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
+                              readers_[l1_path]->get_max_key()};
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
     });
@@ -235,6 +241,7 @@ void Engine::compact_level_zero() {
     // level_files_.
     for (const auto &path : l0_paths) {
       readers_.erase(path);
+      range_bounds_.erase(path);
     }
   }
 
