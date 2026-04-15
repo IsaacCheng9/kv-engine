@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -47,7 +48,7 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
 
   // For each level, sort the files and set the next ID to the highest ID + 1.
   for (size_t level = 0; level < level_files_.size(); ++level) {
-    std::sort(level_files_[level].begin(), level_files_[level].end());
+    std::ranges::sort(level_files_[level]);
     if (!level_files_[level].empty()) {
       next_id_per_level_[level] = level_files_[level].back() + 1;
     }
@@ -58,11 +59,11 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
   // get() after re-open.
   for (std::size_t level = 0; level < level_files_.size(); ++level) {
     for (uint64_t id : level_files_[level]) {
-      auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
-                          "_" + std::to_string(id) + ".dat";
+      auto sstable_path =
+          std::format("{}/sstable_{}_{}.dat", data_dir_, level, id);
       readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
-      range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
-                                     readers_[sstable_path]->get_max_key()};
+      range_bounds_[sstable_path] = {readers_[sstable_path]->min_key(),
+                                     readers_[sstable_path]->max_key()};
     }
   }
 
@@ -96,7 +97,7 @@ void Engine::flush_if_full() {
       next_id_per_level_.resize(1, 0);
     }
     new_id = next_id_per_level_[0]++;
-    sstable_path = data_dir_ + "/sstable_0_" + std::to_string(new_id) + ".dat";
+    sstable_path = std::format("{}/sstable_0_{}.dat", data_dir_, new_id);
   }
 
   // Write the SSTable to the disk.
@@ -119,8 +120,8 @@ void Engine::flush_if_full() {
     wal_.clear();
     level_files_[0].push_back(new_id);
     readers_[sstable_path] = std::move(new_reader);
-    range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
-                                   readers_[sstable_path]->get_max_key()};
+    range_bounds_[sstable_path] = {readers_[sstable_path]->min_key(),
+                                   readers_[sstable_path]->max_key()};
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
@@ -158,8 +159,8 @@ std::optional<std::string> Engine::get(const std::string &key) const {
   for (std::size_t level = 0; level < level_files_.size(); ++level) {
     for (auto iterator = level_files_[level].rbegin();
          iterator != level_files_[level].rend(); ++iterator) {
-      auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
-                          "_" + std::to_string(*iterator) + ".dat";
+      auto sstable_path =
+          std::format("{}/sstable_{}_{}.dat", data_dir_, level, *iterator);
       // Avoid reading the SSTable if the key is not in the range of the
       // SSTable - this saves disk I/O.
       const auto &bounds = range_bounds_.at(sstable_path);
@@ -206,8 +207,7 @@ void Engine::compact_level_zero() {
     new_l1_id = next_id_per_level_[1]++;
     for (auto id : level_files_[0]) {
       l0_ids.push_back(id);
-      l0_paths.push_back(data_dir_ + "/sstable_0_" + std::to_string(id) +
-                         ".dat");
+      l0_paths.push_back(std::format("{}/sstable_0_{}.dat", data_dir_, id));
     }
   }
 
@@ -227,15 +227,14 @@ void Engine::compact_level_zero() {
       accumulator_has_entries = true;
       continue;
     }
-    std::string temp_path =
-        data_dir_ + "/compact_tmp_" + std::to_string(i) + ".dat";
+    std::string temp_path = std::format("{}/compact_tmp_{}.dat", data_dir_, i);
     accumulator_has_entries =
         compact_sstables(accumulator, l0_paths[i], temp_path);
     temp_paths.push_back(temp_path);
     accumulator = temp_path;
   }
   std::string l1_path =
-      data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
+      std::format("{}/sstable_1_{}.dat", data_dir_, new_l1_id);
   std::unique_ptr<SSTableReader> new_l1_reader;
   if (accumulator_has_entries) {
     std::filesystem::rename(accumulator, l1_path);
@@ -252,11 +251,11 @@ void Engine::compact_level_zero() {
     if (accumulator_has_entries) {
       level_files_[1].push_back(new_l1_id);
       readers_[l1_path] = std::move(new_l1_reader);
-      range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
-                                readers_[l1_path]->get_max_key()};
+      range_bounds_[l1_path] = {readers_[l1_path]->min_key(),
+                                readers_[l1_path]->max_key()};
     }
     std::erase_if(level_files_[0], [&](uint64_t id) {
-      return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
+      return std::ranges::contains(l0_ids, id);
     });
     // Remove readers for the retired L0 files. The unique_ptr destructors close
     // the fds, but do it under the lock so readers_ stays in sync with

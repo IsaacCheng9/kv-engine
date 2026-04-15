@@ -13,23 +13,23 @@ public:
   explicit Memtable(std::size_t max_size = 4 * 1024 * 1024);
 
   void put(const std::string &key, const std::string &value);
-  std::optional<std::string> get(const std::string &key) const;
+  [[nodiscard]] std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
   void clear();
 
-  auto begin() const {
+  [[nodiscard]] auto begin() const {
     std::shared_lock lock(mutex_);
     return data_.begin();
   }
-  auto end() const {
+  [[nodiscard]] auto end() const {
     std::shared_lock lock(mutex_);
     return data_.end();
   }
-  std::size_t size() const {
+  [[nodiscard]] std::size_t size() const {
     std::shared_lock lock(mutex_);
     return data_.size();
   }
-  bool is_full() const {
+  [[nodiscard]] bool is_full() const {
     std::shared_lock lock(mutex_);
     return current_size_ >= max_size_;
   }

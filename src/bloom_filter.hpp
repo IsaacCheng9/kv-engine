@@ -17,12 +17,12 @@ public:
   // Probabilistic set membership test. `might_contain(key)` returns false if
   // key was definitely never added (no false negatives) and true if key was
   // probably added (small false positive rate controlled at construction).
-  bool might_contain(std::string_view key) const;
+  [[nodiscard]] bool might_contain(std::string_view key) const;
 
   // Serialise the filter's state to a byte array for on-disk storage.
-  std::vector<uint8_t> serialise() const;
+  [[nodiscard]] std::vector<uint8_t> serialise() const;
   // Reconstruct a Bloom filter from its serialised byte array form.
-  static BloomFilter deserialise(std::span<const uint8_t> data);
+  [[nodiscard]] static BloomFilter deserialise(std::span<const uint8_t> data);
 
 private:
   BloomFilter(std::size_t num_bits, std::size_t num_hashes,

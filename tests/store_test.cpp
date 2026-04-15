@@ -79,8 +79,8 @@ TEST(StoreTest, GetsAllKeys) {
   store.put("key2", "value2");
   auto keys = store.keys();
   EXPECT_EQ(keys.size(), 2);
-  EXPECT_NE(std::find(keys.begin(), keys.end(), "key1"), keys.end());
-  EXPECT_NE(std::find(keys.begin(), keys.end(), "key2"), keys.end());
+  EXPECT_TRUE(std::ranges::contains(keys, "key1"));
+  EXPECT_TRUE(std::ranges::contains(keys, "key2"));
 }
 
 TEST(StoreTest, KeysEmptyWhenStoreIsEmpty) {

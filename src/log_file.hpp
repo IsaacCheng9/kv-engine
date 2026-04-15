@@ -12,6 +12,13 @@ public:
   explicit LogFile(const std::string &path);
   ~LogFile();
 
+  // Non-copyable and non-movable: owns a raw file descriptor, so a copy or
+  // move would double-close on destruction.
+  LogFile(const LogFile &) = delete;
+  LogFile &operator=(const LogFile &) = delete;
+  LogFile(LogFile &&) = delete;
+  LogFile &operator=(LogFile &&) = delete;
+
   void append(std::string_view data);
   std::vector<std::string> read_all();
 

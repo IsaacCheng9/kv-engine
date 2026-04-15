@@ -26,7 +26,7 @@ public:
                   std::size_t memtable_max_size = 4 * 1024 * 1024);
   ~Engine();
   void put(const std::string &key, const std::string &value);
-  std::optional<std::string> get(const std::string &key) const;
+  [[nodiscard]] std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
 
 private:

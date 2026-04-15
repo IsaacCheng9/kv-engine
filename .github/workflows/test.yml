@@ -9,8 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     name: Tests (AddressSanitizer + UBSanitizer)
     timeout-minutes: 15
+    env:
+      CC: gcc-14
+      CXX: g++-14
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
 
       - name: Configure CMake
         run: cmake -B build -DSANITISE=ON
@@ -25,8 +33,16 @@ jobs:
     runs-on: ubuntu-latest
     name: Tests (ThreadSanitizer)
     timeout-minutes: 15
+    env:
+      CC: gcc-14
+      CXX: g++-14
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
 
       - name: Configure CMake with ThreadSanitizer
         run: >
