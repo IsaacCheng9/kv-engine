@@ -1,0 +1,32 @@
+kv-engine benchmark
+  put            (250000 ops)
+  get_memtable   (250000 ops)
+  get_sstable    (250000 ops)
+  get_miss       (250000 ops)
+  mixed_50_50    (250000 ops)
+  crash_recovery (20 ops)
+
+Running put...
+  put finished in 20.16s
+Running get_memtable...
+  get_memtable finished in 0.51s
+Running get_sstable...
+  get_sstable finished in 2.03s
+Running get_miss...
+  get_miss finished in 3.19s
+Running mixed_50_50...
+  mixed_50_50 finished in 10.24s
+Running crash_recovery...
+  crash_recovery finished in 4.40s
+
+Benchmark suite finished in 97.43s (includes scenario setup + measurement).
+
+| Scenario          | Ops/sec   | p50 (us) | p99 (us) | Total (ms) |
+|-------------------|-----------|----------|----------|------------|
+| put               |     12402 |    47.21 |   135.29 |   20157.37 |
+| get_memtable      |    492474 |     2.00 |     4.71 |     507.64 |
+| get_sstable       |    122941 |     7.96 |    15.38 |    2033.49 |
+| get_miss          |     78342 |    12.38 |    20.79 |    3191.12 |
+| mixed_50_50       |     24406 |    29.29 |   109.38 |   10243.35 |
+| crash_recovery    |         5 | 17409.08 | 17950.08 |    4397.59 |
+

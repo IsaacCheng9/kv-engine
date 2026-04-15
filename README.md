@@ -20,11 +20,15 @@ A key-value storage engine in C++20 with LSM-tree architecture.
   resident for each file's lifetime, and `pread`-based positioned reads make
   them safe to share across concurrent `get()` callers; eliminates the open +
   footer + index parse that would otherwise happen on every lookup
-- **Per-`SSTable` Bloom filter** – probabilistic membership test built during
+- **Per-SSTable Bloom filter** – probabilistic membership test built during
   `finalise()` and stored in a new block between the index and footer; on
   `get()`, the filter is consulted before the binary search to short-circuit
-  keys guaranteed not to be in the file (no false negatives, ~1% false
-  positive rate)
+  keys guaranteed not to be in the file (no false negatives, ~1% false positive
+  rate)
+- **Key range pruning** – each cached reader's min/max keys are stored at the
+  engine level so `get()` can skip SSTables whose key range cannot contain the
+  lookup key, avoiding the Bloom check and binary search entirely for
+  out-of-range files
 
 ### Planned Features
 
@@ -95,6 +99,8 @@ cmake --build build_bench
 To save the results to a file while still seeing progress in the terminal:
 
 ```bash
+cmake -B build_bench -DBENCHMARK=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build_bench
 ./build_bench/kv_engine_benchmark | tee docs/YYYY_MM_DD_label.txt
 ```
 
@@ -111,12 +117,14 @@ comparisons.
 - **get_memtable** – reads served entirely from the memtable (no disk I/O).
   Best-case read path
 - **get_sstable** – reads served from SSTables on disk. Each level is scanned
-  from newest to oldest; the Bloom filter short-circuits files whose filter
-  rules the key out, otherwise an in-memory binary search locates the entry
-- **get_miss** – negative lookups for keys that were never inserted. Queries
-  use indices past the inserted range (`key_000000250000`...) so they share
-  the `"key_000000"` prefix with stored keys, exercising the Bloom filter
-  against a realistic miss workload rather than trivially-rejected keys
+  from newest to oldest; key range pruning skips files that can't contain the
+  key, the Bloom filter short-circuits files whose filter rules the key out, and
+  an in-memory binary search locates the entry in the remaining candidates
+- **get_miss** – negative lookups for keys that were never inserted. Queries use
+  indices past the inserted range (`key_000000250000`...) so they share the
+  `"key_000000"` prefix with stored keys, exercising key range pruning and the
+  Bloom filter against a realistic miss workload rather than trivially-rejected
+  keys
 - **mixed_50_50** – 50% reads / 50% writes with deterministic key selection.
   Production-like workload
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op

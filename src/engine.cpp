@@ -61,6 +61,8 @@ Engine::Engine(const std::string &data_dir, std::size_t memtable_max_size)
       auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
                           "_" + std::to_string(id) + ".dat";
       readers_[sstable_path] = std::make_unique<SSTableReader>(sstable_path);
+      range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
+                                     readers_[sstable_path]->get_max_key()};
     }
   }
 
@@ -117,6 +119,8 @@ void Engine::flush_if_full() {
     wal_.clear();
     level_files_[0].push_back(new_id);
     readers_[sstable_path] = std::move(new_reader);
+    range_bounds_[sstable_path] = {readers_[sstable_path]->get_min_key(),
+                                   readers_[sstable_path]->get_max_key()};
     should_trigger_compaction = (level_files_[0].size() >= 4);
   }
 
@@ -156,6 +160,13 @@ std::optional<std::string> Engine::get(const std::string &key) const {
          iterator != level_files_[level].rend(); ++iterator) {
       auto sstable_path = data_dir_ + "/sstable_" + std::to_string(level) +
                           "_" + std::to_string(*iterator) + ".dat";
+      // Avoid reading the SSTable if the key is not in the range of the
+      // SSTable - this saves disk I/O.
+      const auto &bounds = range_bounds_.at(sstable_path);
+      if (bounds.first > key || bounds.second < key) {
+        continue;
+      }
+
       auto sstable_value = readers_.at(sstable_path)->get(key);
       if (sstable_value.has_value()) {
         return sstable_value;
@@ -206,27 +217,44 @@ void Engine::compact_level_zero() {
   // any shared in-memory state.
   std::string accumulator = l0_paths[0];
   std::vector<std::string> temp_paths;
+  // Track whether the merge chain has produced any live entries. If a step
+  // produces none, skip merging with the empty result and adopt the next L0
+  // file directly - this avoids opening an empty SSTable as a reader.
+  bool accumulator_has_entries = true;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
+    if (!accumulator_has_entries) {
+      accumulator = l0_paths[i];
+      accumulator_has_entries = true;
+      continue;
+    }
     std::string temp_path =
         data_dir_ + "/compact_tmp_" + std::to_string(i) + ".dat";
-    compact_sstables(accumulator, l0_paths[i], temp_path);
+    accumulator_has_entries =
+        compact_sstables(accumulator, l0_paths[i], temp_path);
     temp_paths.push_back(temp_path);
     accumulator = temp_path;
   }
   std::string l1_path =
       data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
-  std::filesystem::rename(accumulator, l1_path);
-  // Construct the reader outside the lock (file I/O). Same rule as
-  // flush_if_full: in-memory mutations inside the lock, I/O outside.
-  auto new_l1_reader = std::make_unique<SSTableReader>(l1_path);
+  std::unique_ptr<SSTableReader> new_l1_reader;
+  if (accumulator_has_entries) {
+    std::filesystem::rename(accumulator, l1_path);
+    // Construct the reader outside the lock (file I/O). Same rule as
+    // flush_if_full: in-memory mutations inside the lock, I/O outside.
+    new_l1_reader = std::make_unique<SSTableReader>(l1_path);
+  }
 
   // Take the exclusive lock again to atomically swap the L0 files for the new
   // L1 file. Readers see either the pre-swap state (old L0 IDs) or the
   // post-swap state (new L1 ID) - never a partial state.
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
-    level_files_[1].push_back(new_l1_id);
-    readers_[l1_path] = std::move(new_l1_reader);
+    if (accumulator_has_entries) {
+      level_files_[1].push_back(new_l1_id);
+      readers_[l1_path] = std::move(new_l1_reader);
+      range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
+                                readers_[l1_path]->get_max_key()};
+    }
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
     });
@@ -235,6 +263,7 @@ void Engine::compact_level_zero() {
     // level_files_.
     for (const auto &path : l0_paths) {
       readers_.erase(path);
+      range_bounds_.erase(path);
     }
   }
 
@@ -245,9 +274,10 @@ void Engine::compact_level_zero() {
     std::filesystem::remove(path);
   }
   for (const auto &temp_path : temp_paths) {
-    if (temp_path != accumulator) {
-      std::filesystem::remove(temp_path);
+    if (accumulator_has_entries && temp_path == accumulator) {
+      continue;
     }
+    std::filesystem::remove(temp_path);
   }
 }
 

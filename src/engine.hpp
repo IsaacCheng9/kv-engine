@@ -34,6 +34,10 @@ private:
   std::string data_dir_;
   Memtable memtable_;
   WAL wal_;
+  // Store the minimum and maximum key for each SSTable so get() can skip files
+  // whose key range can't contain the lookup key, reducing disk I/O.
+  std::unordered_map<std::string, std::pair<std::string, std::string>>
+      range_bounds_;
   std::vector<std::vector<uint64_t>> level_files_;
   std::unordered_map<std::string, std::unique_ptr<SSTableReader>> readers_;
   std::vector<uint64_t> next_id_per_level_;

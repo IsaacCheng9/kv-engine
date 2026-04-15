@@ -17,7 +17,7 @@ struct ReaderState {
   void advance() { has_entry = reader.next_entry(key, value); }
 };
 
-void compact_sstables(const std::string &older_path,
+bool compact_sstables(const std::string &older_path,
                       const std::string &newer_path,
                       const std::string &output_path) {
   SSTableWriter writer(output_path);
@@ -27,6 +27,7 @@ void compact_sstables(const std::string &older_path,
   newer_state.reader.seek_to_first();
   older_state.advance();
   newer_state.advance();
+  bool wrote_live_entry = false;
 
   while (newer_state.has_entry || older_state.has_entry) {
     if (newer_state.has_entry && older_state.has_entry &&
@@ -34,6 +35,7 @@ void compact_sstables(const std::string &older_path,
       // Same key - newer shadows older. Skip the older entry entirely.
       if (newer_state.value.has_value()) {
         writer.add_entry(newer_state.key, std::string_view(*newer_state.value));
+        wrote_live_entry = true;
       }
       newer_state.advance();
       older_state.advance();
@@ -42,17 +44,20 @@ void compact_sstables(const std::string &older_path,
       // Older has the smaller key, or newer is exhausted.
       if (older_state.value.has_value()) {
         writer.add_entry(older_state.key, std::string_view(*older_state.value));
+        wrote_live_entry = true;
       }
       older_state.advance();
     } else {
       // Newer has the smaller key, or older is exhausted.
       if (newer_state.value.has_value()) {
         writer.add_entry(newer_state.key, std::string_view(*newer_state.value));
+        wrote_live_entry = true;
       }
       newer_state.advance();
     }
   }
 
   writer.finalise();
+  return wrote_live_entry;
 }
 } // namespace kv

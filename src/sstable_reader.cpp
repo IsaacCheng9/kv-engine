@@ -137,4 +137,12 @@ bool SSTableReader::next_entry(std::string &out_key,
   return true;
 }
 
+const std::string &SSTableReader::get_min_key() const {
+  return index_.front().first;
+}
+
+const std::string &SSTableReader::get_max_key() const {
+  return index_.back().first;
+}
+
 } // namespace kv

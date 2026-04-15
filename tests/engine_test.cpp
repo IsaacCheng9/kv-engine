@@ -30,6 +30,32 @@ bool wait_for_l1_sstable(
   return false;
 }
 
+// Polls for all SSTable and compaction temp files to disappear. Used by tests
+// that compact away every live key, where successful compaction leaves no .dat
+// files behind at all.
+bool wait_for_no_sstable_files(
+    const std::string &dir,
+    std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool found_sstable = false;
+    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
+      auto filename = entry.path().filename().string();
+      if ((filename.starts_with("sstable_") ||
+           filename.starts_with("compact_tmp_")) &&
+          entry.path().extension() == ".dat") {
+        found_sstable = true;
+        break;
+      }
+    }
+    if (!found_sstable) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
 TEST(EngineTest, PutAndGet) {
   std::string temp_dir = std::filesystem::temp_directory_path() /
                          std::filesystem::path("kv_engine_test_put_get");
@@ -269,6 +295,45 @@ TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
       EXPECT_EQ(engine.get("key" + std::to_string(i)),
                 "value" + std::to_string(i));
     }
+  }
+
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST(EngineTest, CompactionThatDeletesAllKeysDoesNotPublishEmptyLevelOneFile) {
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_test_compaction_deletes_all_keys_without_empty_l1");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  {
+    Engine engine(temp_dir, 1);
+    engine.put("key1", "value1");
+    engine.remove("key1");
+    engine.remove("key1");
+    engine.remove("key1");
+
+    ASSERT_TRUE(wait_for_no_sstable_files(temp_dir))
+        << "Compaction did not remove all SSTable files within the timeout";
+    EXPECT_EQ(engine.get("key1"), std::nullopt);
+
+    bool sstable_found = false;
+    for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
+      auto filename = entry.path().filename().string();
+      if (filename.starts_with("sstable_") &&
+          entry.path().extension() == ".dat") {
+        sstable_found = true;
+        break;
+      }
+    }
+    EXPECT_FALSE(sstable_found);
+  }
+
+  {
+    Engine reopened_engine(temp_dir, 1);
+    EXPECT_EQ(reopened_engine.get("key1"), std::nullopt);
   }
 
   std::filesystem::remove_all(temp_dir);
