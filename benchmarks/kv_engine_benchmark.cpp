@@ -181,9 +181,13 @@ Stats bench_get_miss() {
       engine.put(make_key(i), value);
     }
 
-    // Query keys that were never inserted (prefix makes them guaranteed miss).
+    // Query keys that were never inserted - use indices past the inserted
+    // range so the keys share the "key_0000000" prefix with stored keys.
+    // Without the shared prefix, binary-search comparisons reject on the
+    // first byte and the index lookup is artificially cheap, which masks
+    // the bloom filter's benefit.
     stats = run_workload(get_miss_ops, [&](std::size_t i) {
-      (void)engine.get("missing_" + make_key(i));
+      (void)engine.get(make_key(i + get_miss_ops));
     });
   }
   std::filesystem::remove_all(dir);
