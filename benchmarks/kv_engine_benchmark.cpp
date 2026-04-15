@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <print>
@@ -288,6 +289,11 @@ void run_and_record(const std::string &name, Fn fn,
 }
 
 int main() {
+  // Force line-buffered stdout so progress lines flush promptly even when the
+  // binary is piped into `tee` (glibc defaults to fully-buffered on pipes,
+  // which makes CI look like it's hanging until the whole suite finishes).
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+
   std::println("kv-engine benchmark");
   std::println("  put            ({} ops)", put_ops);
   std::println("  get_memtable   ({} ops)", get_memtable_ops);
