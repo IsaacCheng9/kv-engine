@@ -217,29 +217,38 @@ void Engine::compact_level_zero() {
   // any shared in-memory state.
   std::string accumulator = l0_paths[0];
   std::vector<std::string> temp_paths;
+  // Check if the compaction produced any live entries. If not, we can skip the
+  // rest of the compaction and delete the temporary files.
+  bool accumulator_has_entries = true;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
     std::string temp_path =
         data_dir_ + "/compact_tmp_" + std::to_string(i) + ".dat";
-    compact_sstables(accumulator, l0_paths[i], temp_path);
+    accumulator_has_entries =
+        compact_sstables(accumulator, l0_paths[i], temp_path);
     temp_paths.push_back(temp_path);
     accumulator = temp_path;
   }
   std::string l1_path =
       data_dir_ + "/sstable_1_" + std::to_string(new_l1_id) + ".dat";
-  std::filesystem::rename(accumulator, l1_path);
-  // Construct the reader outside the lock (file I/O). Same rule as
-  // flush_if_full: in-memory mutations inside the lock, I/O outside.
-  auto new_l1_reader = std::make_unique<SSTableReader>(l1_path);
+  std::unique_ptr<SSTableReader> new_l1_reader;
+  if (accumulator_has_entries) {
+    std::filesystem::rename(accumulator, l1_path);
+    // Construct the reader outside the lock (file I/O). Same rule as
+    // flush_if_full: in-memory mutations inside the lock, I/O outside.
+    new_l1_reader = std::make_unique<SSTableReader>(l1_path);
+  }
 
   // Take the exclusive lock again to atomically swap the L0 files for the new
   // L1 file. Readers see either the pre-swap state (old L0 IDs) or the
   // post-swap state (new L1 ID) - never a partial state.
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
-    level_files_[1].push_back(new_l1_id);
-    readers_[l1_path] = std::move(new_l1_reader);
-    range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
-                              readers_[l1_path]->get_max_key()};
+    if (accumulator_has_entries) {
+      level_files_[1].push_back(new_l1_id);
+      readers_[l1_path] = std::move(new_l1_reader);
+      range_bounds_[l1_path] = {readers_[l1_path]->get_min_key(),
+                                readers_[l1_path]->get_max_key()};
+    }
     std::erase_if(level_files_[0], [&](uint64_t id) {
       return std::find(l0_ids.begin(), l0_ids.end(), id) != l0_ids.end();
     });
@@ -259,9 +268,10 @@ void Engine::compact_level_zero() {
     std::filesystem::remove(path);
   }
   for (const auto &temp_path : temp_paths) {
-    if (temp_path != accumulator) {
-      std::filesystem::remove(temp_path);
+    if (accumulator_has_entries && temp_path == accumulator) {
+      continue;
     }
+    std::filesystem::remove(temp_path);
   }
 }
 
