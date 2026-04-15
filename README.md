@@ -16,6 +16,10 @@ A key-value storage engine in C++20 with LSM-tree architecture.
   with first match winning and tombstone semantics for deletes
 - **Levelled compaction** – background thread merges L0 SSTables into L1 with
   fine-grained locking, so reads and flushes continue during compaction
+- **SSTable reader cache** – parsed readers (index + file descriptor) stay
+  resident for each file's lifetime, and `pread`-based positioned reads make
+  them safe to share across concurrent `get()` callers; eliminates the open +
+  footer + index parse that would otherwise happen on every lookup
 
 ### Planned Features
 
