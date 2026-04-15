@@ -18,6 +18,8 @@ public:
   std::optional<std::string> get(std::string_view key);
   void seek_to_first();
   bool next_entry(std::string &out_key, std::optional<std::string> &out_value);
+  const std::string &get_min_key() const;
+  const std::string &get_max_key() const;
 
 private:
   int fd_;
