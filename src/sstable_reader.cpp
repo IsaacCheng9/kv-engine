@@ -17,19 +17,30 @@ SSTableReader::SSTableReader(const std::string &path) {
     throw std::runtime_error("Failed to open file: " + path);
   }
 
-  // The SSTable file layout is:
-  // [data entries][index block][footer (8 bytes = offset of index block)]
-  // To load the index, read the footer first to find where the index starts,
-  // then walk the index entries until we hit the footer position.
+  // Footer is 24 bytes: 8 bytes for index offset, 8 bytes for Bloom filter
+  // offset, and 8 bytes for Bloom filter size.
   auto file_size = lseek(fd_, 0, SEEK_END);
+  constexpr std::size_t footer_size = 3 * sizeof(uint64_t);
+  const std::size_t footer_start = file_size - footer_size;
   uint64_t index_offset;
-  pread(fd_, &index_offset, sizeof(index_offset), file_size - sizeof(uint64_t));
+  uint64_t bloom_filter_offset;
+  uint64_t bloom_filter_size;
+  pread(fd_, &index_offset, sizeof(index_offset), footer_start);
+  pread(fd_, &bloom_filter_offset, sizeof(bloom_filter_offset),
+        footer_start + sizeof(uint64_t));
+  pread(fd_, &bloom_filter_size, sizeof(bloom_filter_size),
+        footer_start + 2 * sizeof(uint64_t));
+
+  // Load and deserialise the Bloom filter.
+  std::vector<uint8_t> bloom_filter_data(bloom_filter_size);
+  pread(fd_, bloom_filter_data.data(), bloom_filter_size, bloom_filter_offset);
+  bloom_filter_ = BloomFilter::deserialise(bloom_filter_data);
+
   // Save the offset where the index block starts.
   data_end_ = index_offset;
 
   std::size_t cursor = index_offset;
-  const std::size_t index_end = file_size - sizeof(uint64_t);
-  while (cursor < index_end) {
+  while (cursor < bloom_filter_offset) {
     uint32_t key_length;
     if (pread(fd_, &key_length, sizeof(key_length), cursor) == 0) {
       break;
@@ -58,6 +69,14 @@ SSTableReader::SSTableReader(const std::string &path) {
 SSTableReader::~SSTableReader() { close(fd_); }
 
 std::optional<std::string> SSTableReader::get(std::string_view key) {
+  // Check the Bloom filter first. If it returns false, we know for sure the key
+  // doesn't exist and can skip the index lookup and disk read. If it returns
+  // true, the key might exist, so we proceed with the index lookup and disk
+  // read to confirm.
+  if (!bloom_filter_->might_contain(key)) {
+    return std::nullopt;
+  }
+
   // Find the key from the index using binary search.
   auto iterator = std::lower_bound(
       index_.begin(), index_.end(), key,

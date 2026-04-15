@@ -1,5 +1,7 @@
 #include "sstable_writer.hpp"
+#include "bloom_filter.hpp"
 #include "memtable.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <fcntl.h>
 #include <stdexcept>
@@ -59,6 +61,13 @@ void SSTableWriter::add_entry(std::string_view key,
 }
 
 void SSTableWriter::finalise() {
+  // Write the three trailing blocks that turn the per-entry data written by
+  // add_entry() into a complete SSTable:
+  //   [index block]         - (key, data_offset) pairs in insertion order
+  //   [bloom filter block]  - serialised filter over all keys
+  //   [footer: 24 bytes]    - index_offset | bloom_offset | bloom_size
+  // The reader starts at the footer (last 24 bytes of the file) to locate
+  // the other two blocks.
   uint64_t index_offset = lseek(fd_, 0, SEEK_CUR);
   for (const auto &[key, offset] : key_to_offset_) {
     uint32_t key_length = key.size();
@@ -75,8 +84,23 @@ void SSTableWriter::finalise() {
       throw std::runtime_error("Failed to write offset for index entry");
     }
   }
-  write(fd_, &index_offset, sizeof(index_offset));
 
+  // Build and write the Bloom filter block.
+  uint64_t bloom_offset = lseek(fd_, 0, SEEK_CUR);
+  constexpr double bloom_fpr = 0.01;
+  std::size_t expected_entries =
+      std::max(key_to_offset_.size(), std::size_t{1});
+  BloomFilter bloom_filter(expected_entries, bloom_fpr);
+  for (const auto &[key, offset] : key_to_offset_) {
+    bloom_filter.add(key);
+  }
+  auto bloom_bytes = bloom_filter.serialise();
+  write(fd_, bloom_bytes.data(), bloom_bytes.size());
+  uint64_t bloom_size = bloom_bytes.size();
+
+  write(fd_, &index_offset, sizeof(index_offset));
+  write(fd_, &bloom_offset, sizeof(bloom_offset));
+  write(fd_, &bloom_size, sizeof(bloom_size));
   fsync(fd_);
   finalised_ = true;
 }

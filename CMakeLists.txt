@@ -23,6 +23,7 @@ add_library(kv_engine
     src/sstable_reader.cpp
     src/sstable_writer.cpp
     src/wal.cpp
+    src/bloom_filter.cpp
 )
 target_include_directories(kv_engine PUBLIC src)
 target_link_libraries(kv_engine PRIVATE z)
@@ -46,6 +47,7 @@ FetchContent_MakeAvailable(googletest)
 # Tests
 enable_testing()
 add_executable(kv_engine_tests
+    tests/bloom_filter_test.cpp
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_test.cpp
