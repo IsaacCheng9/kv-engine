@@ -15,7 +15,6 @@ endif()
 
 # Library
 add_library(kv_engine
-    src/store.cpp
     src/compaction.cpp
     src/engine.cpp
     src/log_file.cpp
@@ -55,7 +54,6 @@ add_executable(kv_engine_tests
     tests/memtable_test.cpp
     tests/sstable_reader_test.cpp
     tests/sstable_writer_test.cpp
-    tests/store_test.cpp
     tests/wal_test.cpp
 )
 target_link_libraries(kv_engine_tests PRIVATE kv_engine GTest::gtest_main)
