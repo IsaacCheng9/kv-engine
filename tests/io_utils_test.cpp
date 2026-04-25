@@ -13,7 +13,7 @@ namespace kv {
 
 namespace {
 
-TEST(IoUtilsTest, WriteAllAndReadAllRoundTrip) {
+TEST(IOUtilsTest, WriteAllAndReadAllRoundTrip) {
   const std::string path = "/tmp/kv_io_utils_round_trip";
   std::remove(path.c_str());
 
@@ -36,7 +36,7 @@ TEST(IoUtilsTest, WriteAllAndReadAllRoundTrip) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, ReadAllReturnsFewerBytesAtEof) {
+TEST(IOUtilsTest, ReadAllReturnsFewerBytesAtEof) {
   // File has 8 bytes; ask for 16, should get 8 back without throwing.
   const std::string path = "/tmp/kv_io_utils_eof";
   std::remove(path.c_str());
@@ -58,7 +58,7 @@ TEST(IoUtilsTest, ReadAllReturnsFewerBytesAtEof) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
+TEST(IOUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
   const std::string path = "/tmp/kv_io_utils_empty";
   std::remove(path.c_str());
 
@@ -76,7 +76,7 @@ TEST(IoUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, WriteAllZeroBytesIsNoOp) {
+TEST(IOUtilsTest, WriteAllZeroBytesIsNoOp) {
   const std::string path = "/tmp/kv_io_utils_write_zero";
   std::remove(path.c_str());
 
@@ -89,7 +89,7 @@ TEST(IoUtilsTest, WriteAllZeroBytesIsNoOp) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, ReadAllZeroBytesReturnsZero) {
+TEST(IOUtilsTest, ReadAllZeroBytesReturnsZero) {
   const std::string path = "/tmp/kv_io_utils_read_zero";
   std::remove(path.c_str());
 
@@ -108,7 +108,7 @@ TEST(IoUtilsTest, ReadAllZeroBytesReturnsZero) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, WriteAllThrowsSystemErrorOnClosedFd) {
+TEST(IOUtilsTest, WriteAllThrowsSystemErrorOnClosedFd) {
   const std::string path = "/tmp/kv_io_utils_write_closed";
   std::remove(path.c_str());
 
@@ -120,7 +120,7 @@ TEST(IoUtilsTest, WriteAllThrowsSystemErrorOnClosedFd) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, ReadAllThrowsSystemErrorOnClosedFd) {
+TEST(IOUtilsTest, ReadAllThrowsSystemErrorOnClosedFd) {
   const std::string path = "/tmp/kv_io_utils_read_closed";
   std::remove(path.c_str());
 
@@ -134,7 +134,7 @@ TEST(IoUtilsTest, ReadAllThrowsSystemErrorOnClosedFd) {
   std::remove(path.c_str());
 }
 
-TEST(IoUtilsTest, WriteAllAndReadAllLargeBuffer) {
+TEST(IOUtilsTest, WriteAllAndReadAllLargeBuffer) {
   // 64 KiB - exercises the loop path even on systems with large kernel I/O
   // buffers, and verifies the pointer-advance arithmetic across iterations.
   const std::string path = "/tmp/kv_io_utils_large";
