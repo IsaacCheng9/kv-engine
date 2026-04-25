@@ -20,7 +20,7 @@ public:
   LogFile &operator=(LogFile &&) = delete;
 
   void append(std::string_view data);
-  std::vector<std::string> read_all();
+  std::vector<std::string> read_entries();
 
 private:
   int fd_;

@@ -1,4 +1,5 @@
 #include "log_file.hpp"
+#include "io_utils.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <fcntl.h>
@@ -23,33 +24,23 @@ LogFile::~LogFile() { close(fd_); }
 
 void LogFile::append(std::string_view data) {
   uint32_t length_prefix = data.size();
-  auto length_bytes_written = write(fd_, &length_prefix, sizeof(length_prefix));
-  if (length_bytes_written == -1) {
-    throw std::runtime_error("Failed to write length prefix");
-  }
-
-  auto data_bytes_written = write(fd_, data.data(), data.size());
-  if (data_bytes_written == -1) {
-    throw std::runtime_error("Failed to write data");
-  }
-
+  write_all(fd_, &length_prefix, sizeof(length_prefix));
+  write_all(fd_, data.data(), data.size());
   fsync(fd_);
 }
 
-std::vector<std::string> LogFile::read_all() {
+std::vector<std::string> LogFile::read_entries() {
   lseek(fd_, 0, SEEK_SET);
   std::vector<std::string> entries;
 
   while (true) {
     uint32_t length = 0;
-    auto length_bytes_read = read(fd_, &length, sizeof(length));
-    if (length_bytes_read == 0) {
+    if (read_all(fd_, &length, sizeof(length)) < sizeof(length)) {
       break;
     }
 
     std::string entry(length, '\0');
-    auto data_bytes_read = read(fd_, entry.data(), entry.size());
-    if (data_bytes_read < static_cast<ssize_t>(length)) {
+    if (read_all(fd_, entry.data(), entry.size()) < entry.size()) {
       throw std::runtime_error(
           std::format("Truncated read: expected {} bytes", length));
     }

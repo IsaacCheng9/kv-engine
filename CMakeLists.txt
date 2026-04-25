@@ -17,6 +17,7 @@ endif()
 add_library(kv_engine
     src/compaction.cpp
     src/engine.cpp
+    src/io_utils.cpp
     src/log_file.cpp
     src/memtable.cpp
     src/sstable_reader.cpp
@@ -50,6 +51,7 @@ add_executable(kv_engine_tests
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_test.cpp
+    tests/io_utils_test.cpp
     tests/log_file_test.cpp
     tests/memtable_test.cpp
     tests/sstable_reader_test.cpp
