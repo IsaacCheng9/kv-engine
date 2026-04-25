@@ -1,4 +1,5 @@
 #include "wal.hpp"
+#include "io_utils.hpp"
 #include "memtable.hpp"
 #include <cstdint>
 #include <fcntl.h>
@@ -29,34 +30,16 @@ WAL::WAL(const std::string &path) {
 WAL::~WAL() { close(fd_); }
 
 void WAL::log_put(std::string_view key, std::string_view value) {
-
   static constexpr uint8_t put_op = 0x01;
-  auto put_op_bytes_written = write(fd_, &put_op, sizeof(put_op));
-  if (put_op_bytes_written == -1) {
-    throw std::runtime_error("Failed to write operation type byte for log put");
-  }
+  write_all(fd_, &put_op, sizeof(put_op));
 
   uint32_t key_length_prefix = key.size();
-  auto key_length_bytes_written =
-      write(fd_, &key_length_prefix, sizeof(key_length_prefix));
-  if (key_length_bytes_written == -1) {
-    throw std::runtime_error("Failed to write length prefix for key");
-  }
-  auto key_data_bytes_written = write(fd_, key.data(), key.size());
-  if (key_data_bytes_written == -1) {
-    throw std::runtime_error("Failed to write data for key");
-  }
+  write_all(fd_, &key_length_prefix, sizeof(key_length_prefix));
+  write_all(fd_, key.data(), key.size());
 
   uint32_t value_length_prefix = value.size();
-  auto value_length_bytes_written =
-      write(fd_, &value_length_prefix, sizeof(value_length_prefix));
-  if (value_length_bytes_written == -1) {
-    throw std::runtime_error("Failed to write length prefix for value");
-  }
-  auto value_data_bytes_written = write(fd_, value.data(), value.size());
-  if (value_data_bytes_written == -1) {
-    throw std::runtime_error("Failed to write data for value");
-  }
+  write_all(fd_, &value_length_prefix, sizeof(value_length_prefix));
+  write_all(fd_, value.data(), value.size());
 
   // Detect corruption. If the process crashes mid-write (e.g. power failure),
   // a record could be partially written - the key might be there but the value
@@ -71,42 +54,25 @@ void WAL::log_put(std::string_view key, std::string_view value) {
   checksum =
       update_crc(checksum, &value_length_prefix, sizeof(value_length_prefix));
   checksum = update_crc(checksum, value.data(), value.size());
-  auto checksum_bytes_written = write(fd_, &checksum, sizeof(checksum));
-  if (checksum_bytes_written == -1) {
-    throw std::runtime_error("Failed to write checksum for log put");
-  }
+  write_all(fd_, &checksum, sizeof(checksum));
 
   fsync(fd_);
 }
 
 void WAL::log_remove(std::string_view key) {
   static constexpr uint8_t remove_op = 0x02;
-  auto remove_op_bytes_written = write(fd_, &remove_op, sizeof(remove_op));
-  if (remove_op_bytes_written == -1) {
-    throw std::runtime_error(
-        "Failed to write operation type byte for log remove");
-  }
+  write_all(fd_, &remove_op, sizeof(remove_op));
 
   uint32_t key_length_prefix = key.size();
-  auto key_length_bytes_written =
-      write(fd_, &key_length_prefix, sizeof(key_length_prefix));
-  if (key_length_bytes_written == -1) {
-    throw std::runtime_error("Failed to write length prefix for key");
-  }
-  auto key_data_bytes_written = write(fd_, key.data(), key.size());
-  if (key_data_bytes_written == -1) {
-    throw std::runtime_error("Failed to write data for key");
-  }
+  write_all(fd_, &key_length_prefix, sizeof(key_length_prefix));
+  write_all(fd_, key.data(), key.size());
 
   uint32_t checksum = 0;
   checksum = update_crc(checksum, &remove_op, sizeof(remove_op));
   checksum =
       update_crc(checksum, &key_length_prefix, sizeof(key_length_prefix));
   checksum = update_crc(checksum, key.data(), key.size());
-  auto checksum_bytes_written = write(fd_, &checksum, sizeof(checksum));
-  if (checksum_bytes_written == -1) {
-    throw std::runtime_error("Failed to write checksum for log remove");
-  }
+  write_all(fd_, &checksum, sizeof(checksum));
 
   fsync(fd_);
 }
@@ -121,22 +87,19 @@ void WAL::replay(Memtable &memtable) {
     uint32_t checksum = 0;
 
     uint8_t op_type;
-    auto op_type_bytes_read = read(fd_, &op_type, sizeof(op_type));
-    if (op_type_bytes_read == 0) {
+    if (read_all(fd_, &op_type, sizeof(op_type)) < sizeof(op_type)) {
       break;
     }
     checksum = update_crc(checksum, &op_type, sizeof(op_type));
 
     uint32_t key_length;
-    auto key_length_bytes_read = read(fd_, &key_length, sizeof(key_length));
-    if (key_length_bytes_read == 0) {
+    if (read_all(fd_, &key_length, sizeof(key_length)) < sizeof(key_length)) {
       break;
     }
     checksum = update_crc(checksum, &key_length, sizeof(key_length));
 
     std::string key(key_length, '\0');
-    auto key_data_bytes_read = read(fd_, key.data(), key.size());
-    if (key_data_bytes_read < static_cast<ssize_t>(key_length)) {
+    if (read_all(fd_, key.data(), key.size()) < key.size()) {
       break;
     }
     checksum = update_crc(checksum, key.data(), key.size());
@@ -144,23 +107,24 @@ void WAL::replay(Memtable &memtable) {
     // Only put operations include a value.
     if (op_type == 0x01) {
       uint32_t value_length;
-      auto value_length_bytes_read =
-          read(fd_, &value_length, sizeof(value_length));
-      if (value_length_bytes_read == 0) {
+      if (read_all(fd_, &value_length, sizeof(value_length)) <
+          sizeof(value_length)) {
         break;
       }
       checksum = update_crc(checksum, &value_length, sizeof(value_length));
 
       std::string value(value_length, '\0');
-      auto value_data_bytes_read = read(fd_, value.data(), value.size());
-      if (value_data_bytes_read < static_cast<ssize_t>(value_length)) {
+      if (read_all(fd_, value.data(), value.size()) < value.size()) {
         break;
       }
       checksum = update_crc(checksum, value.data(), value.size());
 
       // Read and verify checksum.
       uint32_t stored_checksum;
-      read(fd_, &stored_checksum, sizeof(stored_checksum));
+      if (read_all(fd_, &stored_checksum, sizeof(stored_checksum)) <
+          sizeof(stored_checksum)) {
+        break;
+      }
       if (checksum != stored_checksum) {
         std::println(
             stderr, "WAL replay: checksum mismatch, stopping at corrupt node.");
@@ -171,7 +135,10 @@ void WAL::replay(Memtable &memtable) {
     } else if (op_type == 0x02) {
       // Read and verify checksum.
       uint32_t stored_checksum;
-      read(fd_, &stored_checksum, sizeof(stored_checksum));
+      if (read_all(fd_, &stored_checksum, sizeof(stored_checksum)) <
+          sizeof(stored_checksum)) {
+        break;
+      }
       if (checksum != stored_checksum) {
         std::println(
             stderr, "WAL replay: checksum mismatch, stopping at corrupt node.");
