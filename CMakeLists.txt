@@ -17,6 +17,7 @@ endif()
 add_library(kv_engine
     src/compaction.cpp
     src/engine.cpp
+    src/io_utils.cpp
     src/log_file.cpp
     src/memtable.cpp
     src/sstable_reader.cpp
