@@ -51,6 +51,7 @@ add_executable(kv_engine_tests
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_test.cpp
+    tests/io_utils_test.cpp
     tests/log_file_test.cpp
     tests/memtable_test.cpp
     tests/sstable_reader_test.cpp
