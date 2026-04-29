@@ -143,5 +143,35 @@ TEST(EngineIntegrationTest, DataSurvivesMultipleReopens) {
 
   std::filesystem::remove_all(temp_dir);
 }
+
+// TODO: Test currently fails:
+// SSTableReader::get returns the same std::nullopt for "not in file" and
+// "found with tombstone", so Engine::get walks past the tombstone to the
+// older value. Will pass once the reader returns a tristate.
+TEST(EngineIntegrationTest, TombstoneInNewerSSTableShadowsLiveValueInOlder) {
+  // put -> flush, remove -> flush (tombstone written to a newer SSTable), then
+  // reopen and verify the tombstone shadows the older value.
+  std::string temp_dir =
+      std::filesystem::temp_directory_path() /
+      std::filesystem::path(
+          "kv_engine_integration_mixed_operations_across_reopens");
+  std::filesystem::remove_all(temp_dir);
+  std::filesystem::create_directories(temp_dir);
+
+  // Write a key to an SSTable, then remove it and have the tombstone written
+  // to a different (newer) SSTable, then get the key.
+  {
+    Engine engine(temp_dir, 1);
+    engine.put("key1", "value1");
+    engine.remove("key1");
+  }
+  {
+    Engine reopened_engine(temp_dir);
+    EXPECT_EQ(reopened_engine.get("key1"), std::nullopt);
+  }
+
+  std::filesystem::remove_all(temp_dir);
+}
+
 } // namespace
 } // namespace kv
