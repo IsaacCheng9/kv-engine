@@ -144,10 +144,6 @@ TEST(EngineIntegrationTest, DataSurvivesMultipleReopens) {
   std::filesystem::remove_all(temp_dir);
 }
 
-// TODO: Test currently fails:
-// SSTableReader::get returns the same std::nullopt for "not in file" and
-// "found with tombstone", so Engine::get walks past the tombstone to the
-// older value. Will pass once the reader returns a tristate.
 TEST(EngineIntegrationTest, TombstoneInNewerSSTableShadowsLiveValueInOlder) {
   // put -> flush, remove -> flush (tombstone written to a newer SSTable), then
   // reopen and verify the tombstone shadows the older value.
