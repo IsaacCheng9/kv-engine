@@ -58,6 +58,48 @@ TEST(IOUtilsTest, ReadAllReturnsFewerBytesAtEof) {
   std::remove(path.c_str());
 }
 
+TEST(IOUtilsTest, PReadExactReadsFromOffset) {
+  const std::string path = "/tmp/kv_io_utils_pread_offset";
+  std::remove(path.c_str());
+
+  const std::string payload = "abcdefgh";
+
+  int write_fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
+  ASSERT_NE(write_fd, -1);
+  write_all(write_fd, payload.data(), payload.size());
+  close(write_fd);
+
+  int read_fd = open(path.c_str(), O_RDONLY);
+  ASSERT_NE(read_fd, -1);
+  std::string buf(3, '\0');
+  EXPECT_NO_THROW(pread_exact(read_fd, buf.data(), buf.size(), 2));
+  close(read_fd);
+
+  EXPECT_EQ(buf, "cde");
+  std::remove(path.c_str());
+}
+
+TEST(IOUtilsTest, PReadExactThrowsOnEof) {
+  const std::string path = "/tmp/kv_io_utils_pread_eof";
+  std::remove(path.c_str());
+
+  const std::string payload = "12345678";
+
+  int write_fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
+  ASSERT_NE(write_fd, -1);
+  write_all(write_fd, payload.data(), payload.size());
+  close(write_fd);
+
+  int read_fd = open(path.c_str(), O_RDONLY);
+  ASSERT_NE(read_fd, -1);
+  std::vector<char> buf(6);
+  EXPECT_THROW(pread_exact(read_fd, buf.data(), buf.size(), 5),
+               std::runtime_error);
+  close(read_fd);
+
+  std::remove(path.c_str());
+}
+
 TEST(IOUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
   const std::string path = "/tmp/kv_io_utils_empty";
   std::remove(path.c_str());
