@@ -153,8 +153,8 @@ TEST(EngineIntegrationTest, TombstoneInNewerSSTableShadowsLiveValueInOlder) {
   // reopen and verify the tombstone shadows the older value.
   std::string temp_dir =
       std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_integration_mixed_operations_across_reopens");
+      std::filesystem::path("kv_engine_integration_tombstone_in_newer_sstable_"
+                            "shadows_live_value_in_older");
   std::filesystem::remove_all(temp_dir);
   std::filesystem::create_directories(temp_dir);
 
