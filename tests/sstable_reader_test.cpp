@@ -80,7 +80,7 @@ TEST(SSTableReaderTest, GetReturnsValueForExistingKey) {
   std::remove(path.c_str());
 }
 
-TEST(SSTableReaderTest, GetReturnsNulloptForDeletedKey) {
+TEST(SSTableReaderTest, GetReturnsTombstoneForDeletedKey) {
   const std::string path = "/tmp/kv_sstable_reader_test_deleted_key";
   std::remove(path.c_str());
   {
@@ -94,7 +94,9 @@ TEST(SSTableReaderTest, GetReturnsNulloptForDeletedKey) {
   }
 
   SSTableReader reader(path);
-  EXPECT_EQ(reader.get("key1"), std::nullopt);
+  auto result = reader.get("key1");
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().has_value());
 
   std::remove(path.c_str());
 }

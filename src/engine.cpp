@@ -168,10 +168,16 @@ std::optional<std::string> Engine::get(const std::string &key) const {
         continue;
       }
 
-      auto sstable_value = readers_.at(sstable_path)->get(key);
-      if (sstable_value.has_value()) {
-        return sstable_value;
+      auto sstable_result = readers_.at(sstable_path)->get(key);
+      if (!sstable_result.has_value()) {
+        // Not in this file - try older files.
+        continue;
       }
+
+      // Return either the value or std:nullopt if it was a tombstone. Don't try
+      // older files since the presence of the key in this file means any older
+      // value is shadowed, even if this file's value is a tombstone.
+      return *sstable_result;
     }
   }
 

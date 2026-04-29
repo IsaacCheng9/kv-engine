@@ -22,7 +22,12 @@ public:
   SSTableReader(SSTableReader &&) = delete;
   SSTableReader &operator=(SSTableReader &&) = delete;
 
-  [[nodiscard]] std::optional<std::string> get(std::string_view key);
+  // Returns std::nullopt if the key isn't in the file,
+  // std::optional{std::nullopt} if the key is in the file but it's a tombstone,
+  // or std::optional{std::optional{"value"}} if the key is in the file and it's
+  // a live value.
+  [[nodiscard]] std::optional<std::optional<std::string>>
+  get(std::string_view key);
   void seek_to_first();
   [[nodiscard]] bool next_entry(std::string &out_key,
                                 std::optional<std::string> &out_value);

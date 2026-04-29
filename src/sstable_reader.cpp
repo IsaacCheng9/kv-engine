@@ -68,7 +68,8 @@ SSTableReader::SSTableReader(const std::string &path) {
 
 SSTableReader::~SSTableReader() { close(fd_); }
 
-std::optional<std::string> SSTableReader::get(std::string_view key) {
+std::optional<std::optional<std::string>>
+SSTableReader::get(std::string_view key) {
   // Check the Bloom filter first. If it returns false, we know for sure the key
   // doesn't exist and can skip the index lookup and disk read. If it returns
   // true, the key might exist, so we proceed with the index lookup and disk
@@ -97,12 +98,12 @@ std::optional<std::string> SSTableReader::get(std::string_view key) {
   cursor += sizeof(value_length);
   // Key was deleted, so a tombstone marker is written instead of the value.
   if (value_length == UINT32_MAX) {
-    return std::nullopt;
+    return std::optional<std::string>{std::nullopt};
   }
   std::string value(value_length, '\0');
   pread(fd_, value.data(), value_length, cursor);
 
-  return value;
+  return std::optional<std::string>{value};
 }
 
 void SSTableReader::seek_to_first() { read_position_ = 0; }
