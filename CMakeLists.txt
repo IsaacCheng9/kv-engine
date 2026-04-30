@@ -28,12 +28,7 @@ add_library(kv_engine
 target_include_directories(kv_engine PUBLIC src)
 target_link_libraries(kv_engine PRIVATE z)
 
-# Compiler warnings (applied to our code only, not dependencies). In release
-# mode (used for benchmarks), GCC enables _FORTIFY_SOURCE which marks read()
-# with warn_unused_result. We ignore it for now - write_all/read_all helpers
-# tracked in the backlog will fix this properly.
-target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror
-                                         -Wno-unused-result)
+target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 # GoogleTest
 include(FetchContent)
@@ -50,6 +45,7 @@ add_executable(kv_engine_tests
     tests/bloom_filter_test.cpp
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
+    tests/engine_integration_test.cpp
     tests/engine_test.cpp
     tests/io_utils_test.cpp
     tests/log_file_test.cpp

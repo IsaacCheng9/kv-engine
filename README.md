@@ -52,8 +52,8 @@ flowchart TD
 
 ## Build
 
-Requires a C++23 compiler with `<print>` support – GCC 14+, Clang 18+ with
-libc++ 17+, or Apple Clang 16+.
+Requires a C++23 compiler with `<print>` support – GCC 14+, a Clang toolchain
+with libc++ 19+, or Apple Clang 16+ (Xcode 16+).
 
 ```bash
 cmake -B build -DSANITISE=ON
