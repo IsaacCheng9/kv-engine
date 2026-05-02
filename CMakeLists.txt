@@ -13,10 +13,10 @@ if(SANITISE)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-# Protobuf + gRPC (Homebrew on macOS, libgrpc++-dev on Debian/Ubuntu). Use
-# CONFIG mode for both - the legacy FindProtobuf module conflicts with the
-# Protobuf targets that gRPC's own config pulls in transitively.
-find_package(Protobuf CONFIG REQUIRED)
+# Protobuf + gRPC (Homebrew on macOS, libgrpc++-dev on Debian/Ubuntu). Only
+# call find_package(gRPC) - it pulls Protobuf in transitively, which avoids
+# the platform mismatch where macOS Homebrew ships protobuf-config.cmake but
+# Ubuntu's apt packages only support the legacy FindProtobuf module.
 find_package(gRPC CONFIG REQUIRED)
 
 # Run protoc + grpc_cpp_plugin on each .proto file, emitting generated code
