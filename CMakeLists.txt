@@ -73,6 +73,13 @@ target_link_libraries(kv_engine PRIVATE z)
 
 target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+# gRPC server library. Kept separate from kv_engine so the engine itself
+# doesn't depend on gRPC; the future server binary links both.
+add_library(kv_grpc src/grpc_server.cpp)
+target_include_directories(kv_grpc PUBLIC src)
+target_link_libraries(kv_grpc PUBLIC kv_engine kv_proto)
+target_compile_options(kv_grpc PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 # GoogleTest
 include(FetchContent)
 FetchContent_Declare(
