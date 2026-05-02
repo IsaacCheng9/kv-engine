@@ -13,10 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install GCC 14
+      - name: Install GCC 14, gRPC, and Protobuf
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14
+          sudo apt-get install -y gcc-14 g++-14 \
+            libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc
 
       - name: Configure CMake (release + benchmarks)
         run: cmake -B build_bench -DBENCHMARK=ON -DCMAKE_BUILD_TYPE=Release

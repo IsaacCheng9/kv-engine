@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package kv.v1;
+
+// Single-node key-value store API. Keys and values are opaque byte sequences -
+// the server never inspects or validates their contents.
+service KvStoreService {
+  // Inserts or overwrites the value for `key`. Returns OK on success.
+  rpc Put(PutRequest) returns (PutResponse);
+
+  // Returns the value for `key`. Returns NOT_FOUND if the key doesn't exist
+  // or has been deleted.
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Deletes the value for `key`. Returns OK whether or not the key existed -
+  // delete is idempotent.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}
+
+message PutRequest {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message PutResponse {}
+
+message GetRequest {
+  bytes key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+}
+
+message DeleteRequest {
+  bytes key = 1;
+}
+
+message DeleteResponse {}
