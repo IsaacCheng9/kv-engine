@@ -13,6 +13,49 @@ if(SANITISE)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+# Protobuf + gRPC (Homebrew on macOS, libgrpc++-dev on Debian/Ubuntu). Use
+# CONFIG mode for both - the legacy FindProtobuf module conflicts with the
+# Protobuf targets that gRPC's own config pulls in transitively.
+find_package(Protobuf CONFIG REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
+
+# Run protoc + grpc_cpp_plugin on each .proto file, emitting generated code
+# into ${KV_PROTO_GEN_DIR}/<package-path>/<name>.{pb,grpc.pb}.{h,cc}.
+set(KV_PROTO_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/proto_gen)
+file(MAKE_DIRECTORY ${KV_PROTO_GEN_DIR})
+
+set(KV_PROTO_FILE ${CMAKE_CURRENT_SOURCE_DIR}/proto/kv/v1/kv.proto)
+set(KV_PROTO_SRCS
+    ${KV_PROTO_GEN_DIR}/kv/v1/kv.pb.cc
+    ${KV_PROTO_GEN_DIR}/kv/v1/kv.grpc.pb.cc
+)
+set(KV_PROTO_HDRS
+    ${KV_PROTO_GEN_DIR}/kv/v1/kv.pb.h
+    ${KV_PROTO_GEN_DIR}/kv/v1/kv.grpc.pb.h
+)
+
+add_custom_command(
+    OUTPUT ${KV_PROTO_SRCS} ${KV_PROTO_HDRS}
+    COMMAND $<TARGET_FILE:protobuf::protoc>
+    ARGS --grpc_out=${KV_PROTO_GEN_DIR}
+         --cpp_out=${KV_PROTO_GEN_DIR}
+         -I ${CMAKE_CURRENT_SOURCE_DIR}/proto
+         --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
+         ${KV_PROTO_FILE}
+    DEPENDS ${KV_PROTO_FILE}
+    COMMENT "Generating protobuf + gRPC C++ code from kv.proto"
+)
+
+# Library wrapping the generated code. Kept separate from kv_engine so the
+# engine itself doesn't need to know about gRPC, and so the generated code's
+# warnings don't fight the project's -Werror policy.
+add_library(kv_proto ${KV_PROTO_SRCS})
+target_include_directories(kv_proto PUBLIC ${KV_PROTO_GEN_DIR})
+target_link_libraries(kv_proto PUBLIC gRPC::grpc++ protobuf::libprotobuf)
+# Generated protobuf/gRPC code triggers warnings we don't control. Suppress
+# them locally rather than weakening the project-wide warning flags.
+target_compile_options(kv_proto PRIVATE -w)
+
 # Library
 add_library(kv_engine
     src/compaction.cpp
