@@ -104,6 +104,7 @@ add_executable(kv_engine_tests
     tests/engine_concurrency_test.cpp
     tests/engine_integration_test.cpp
     tests/engine_test.cpp
+    tests/grpc_integration_test.cpp
     tests/io_utils_test.cpp
     tests/log_file_test.cpp
     tests/memtable_test.cpp
@@ -111,7 +112,7 @@ add_executable(kv_engine_tests
     tests/sstable_writer_test.cpp
     tests/wal_test.cpp
 )
-target_link_libraries(kv_engine_tests PRIVATE kv_engine GTest::gtest_main)
+target_link_libraries(kv_engine_tests PRIVATE kv_grpc GTest::gtest_main)
 target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
