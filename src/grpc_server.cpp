@@ -58,9 +58,21 @@ grpc::Status KvStoreServiceImpl::Get(grpc::ServerContext *,
 }
 
 grpc::Status KvStoreServiceImpl::Delete(grpc::ServerContext *,
-                                        const kv::v1::DeleteRequest *,
+                                        const kv::v1::DeleteRequest *request,
                                         kv::v1::DeleteResponse *) {
-  return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "Not yet implemented");
+  const std::string &key = request->key();
+  if (key.empty()) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "Key cannot be empty");
+  }
+  if (key.size() > max_key_size) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "Key size exceeds maximum allowed size of " +
+                            std::to_string(max_key_size) + " bytes");
+  }
+
+  engine_->remove(key);
+  return grpc::Status::OK;
 }
 
 } // namespace kv
