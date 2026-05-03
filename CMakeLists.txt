@@ -73,9 +73,10 @@ target_link_libraries(kv_engine PRIVATE z)
 
 target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-# gRPC server library. Kept separate from kv_engine so the engine itself
-# doesn't depend on gRPC; the server binary links both.
-add_library(kv_grpc src/grpc_server.cpp)
+# gRPC server + client library. Kept separate from kv_engine so the engine
+# itself doesn't depend on gRPC; the server binary and any client consumer
+# (tests, future CLI tools) link this.
+add_library(kv_grpc src/grpc_server.cpp src/grpc_client.cpp)
 target_include_directories(kv_grpc PUBLIC src)
 target_link_libraries(kv_grpc PUBLIC kv_engine kv_proto)
 target_compile_options(kv_grpc PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -97,7 +98,7 @@ FetchContent_MakeAvailable(googletest)
 
 # Tests
 enable_testing()
-add_executable(kv_engine_tests
+set(KV_TEST_SOURCES
     tests/bloom_filter_test.cpp
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
@@ -110,7 +111,17 @@ add_executable(kv_engine_tests
     tests/sstable_writer_test.cpp
     tests/wal_test.cpp
 )
-target_link_libraries(kv_engine_tests PRIVATE kv_engine GTest::gtest_main)
+
+# gRPC's transitive Abseil dependency uses internal atomics that TSan can't
+# reason about, producing false positives in Abseil's GraphCycles deadlock
+# detector. Exclude the gRPC integration tests from TSan builds; the engine
+# concurrency tests still exercise our own threading code under TSan.
+if(NOT CMAKE_CXX_FLAGS MATCHES "fsanitize=thread")
+    list(APPEND KV_TEST_SOURCES tests/grpc_integration_test.cpp)
+endif()
+
+add_executable(kv_engine_tests ${KV_TEST_SOURCES})
+target_link_libraries(kv_engine_tests PRIVATE kv_grpc GTest::gtest_main)
 target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
