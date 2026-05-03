@@ -30,7 +30,11 @@ grpc::Status KvStoreServiceImpl::Put(grpc::ServerContext *,
                             std::to_string(max_value_size) + " bytes");
   }
 
-  engine_->put(key, value);
+  try {
+    engine_->put(key, value);
+  } catch (const std::exception &e) {
+    return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+  }
   return grpc::Status::OK;
 }
 
@@ -48,7 +52,12 @@ grpc::Status KvStoreServiceImpl::Get(grpc::ServerContext *,
                             std::to_string(max_key_size) + " bytes");
   }
 
-  auto value = engine_->get(key);
+  std::optional<std::string> value;
+  try {
+    value = engine_->get(key);
+  } catch (const std::exception &e) {
+    return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+  }
   if (!value) {
     return grpc::Status(grpc::StatusCode::NOT_FOUND, "Key not found");
   }
@@ -71,7 +80,11 @@ grpc::Status KvStoreServiceImpl::Delete(grpc::ServerContext *,
                             std::to_string(max_key_size) + " bytes");
   }
 
-  engine_->remove(key);
+  try {
+    engine_->remove(key);
+  } catch (const std::exception &e) {
+    return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+  }
   return grpc::Status::OK;
 }
 
