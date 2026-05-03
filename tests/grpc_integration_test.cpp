@@ -13,6 +13,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace kv {
 
@@ -145,6 +147,53 @@ TEST(GrpcIntegrationTest, OversizedValueOnPutFails) {
 
   std::string huge_value(1024 * 1024 + 1, 'v');
   EXPECT_THROW(client.put("key", huge_value), std::runtime_error);
+}
+
+TEST(GrpcIntegrationTest, ConcurrentClientWritesArePersisted) {
+  // 8 client-thread pairs, each doing 100 puts on distinct keys
+  // (namespaced by thread id). After all threads join, verify every key is
+  // readable with its expected value. Stresses both the gRPC server's
+  // request dispatch under multiple simultaneous connections and the
+  // engine's write_mutex_ under genuine concurrent load.
+  auto handle = start_server("concurrent_writes");
+
+  constexpr int num_threads = 8;
+  constexpr int puts_per_thread = 100;
+
+  std::vector<std::thread> threads;
+  threads.reserve(num_threads);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    threads.emplace_back([&handle, thread_id]() {
+      // Each thread gets its own client / channel, so the server sees
+      // multiple simultaneous TCP connections rather than multiplexed RPCs
+      // on one channel.
+      auto client = make_client(handle);
+      for (int i = 0; i < puts_per_thread; ++i) {
+        const std::string key =
+            "t" + std::to_string(thread_id) + "_k" + std::to_string(i);
+        const std::string value =
+            "v" + std::to_string(thread_id) + "_" + std::to_string(i);
+        client.put(key, value);
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+
+  auto verify_client = make_client(handle);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    for (int i = 0; i < puts_per_thread; ++i) {
+      const std::string key =
+          "t" + std::to_string(thread_id) + "_k" + std::to_string(i);
+      const std::string expected =
+          "v" + std::to_string(thread_id) + "_" + std::to_string(i);
+      auto value = verify_client.get(key);
+      ASSERT_TRUE(value.has_value())
+          << "Missing key " << key << " after concurrent writes";
+      EXPECT_EQ(*value, expected);
+    }
+  }
 }
 
 } // namespace
