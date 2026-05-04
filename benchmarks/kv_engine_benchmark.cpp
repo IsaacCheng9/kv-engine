@@ -10,6 +10,13 @@
 //   3. get_sstable      - reads that fall through to SSTables on disk
 //   4. get_miss         - negative lookups (keys that were never inserted)
 //   5. mixed_50_50      - interleaved reads and writes, production-like
+//   6. crash_recovery   - WAL replay time on engine reopen
+//   7. grpc_put         - writes via the gRPC client over loopback
+//   8. grpc_get         - memtable reads via the gRPC client over loopback
+//
+// grpc_put / grpc_get measure the network + serialisation overhead of going
+// through gRPC vs the direct engine call (compare against `put` /
+// `get_memtable` rows). Loopback only - real RTT would dominate this.
 //
 // The put and get_sstable scenarios use a small memtable to force many
 // flushes, so SSTable code paths actually get exercised. Tune the memtable
@@ -18,6 +25,8 @@
 // Output is a Markdown table to stdout, easy to paste into PR descriptions.
 
 #include "engine.hpp"
+#include "grpc_client.hpp"
+#include "grpc_server.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +34,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
+#include <grpcpp/grpcpp.h>
+#include <memory>
 #include <print>
 #include <random>
 #include <string>
@@ -51,6 +62,13 @@ constexpr std::size_t mixed_ops = 250'000;
 // to SSTables, which is the worst case for replay.
 constexpr std::size_t crash_recovery_ops = 20;
 constexpr std::size_t crash_recovery_entries_per_op = 5'000;
+
+// gRPC scenarios pay a per-op network + serialisation cost on top of the
+// direct engine call, so each op is much slower (~10-100x). Lower op counts
+// keep the gRPC slice of the run under ~30s while still giving ~500 samples
+// above p99 for tight percentile estimates.
+constexpr std::size_t grpc_put_ops = 50'000;
+constexpr std::size_t grpc_get_ops = 50'000;
 
 // Small memtable (64 KiB) forces frequent flushes so SSTable code paths
 // actually get exercised. The default 4 MiB memtable would keep everything
@@ -94,6 +112,60 @@ std::string fresh_dir(const std::string &name) {
   std::filesystem::remove_all(path);
   std::filesystem::create_directories(path);
   return path.string();
+}
+
+// In-process gRPC server bound to a kernel-allocated port. Owns the engine,
+// the service implementation, and the gRPC server itself. Destructor shuts
+// the server down and removes the data directory, mirroring the
+// ServerHandle pattern from the integration tests.
+struct BenchServer {
+  std::filesystem::path data_dir;
+  std::unique_ptr<kv::Engine> engine;
+  std::unique_ptr<kv::KvStoreServiceImpl> service;
+  std::unique_ptr<grpc::Server> server;
+  int port = 0;
+
+  BenchServer() = default;
+  BenchServer(BenchServer &&) = default;
+  BenchServer &operator=(BenchServer &&) = default;
+  BenchServer(const BenchServer &) = delete;
+  BenchServer &operator=(const BenchServer &) = delete;
+
+  ~BenchServer() {
+    if (server) {
+      // Immediate shutdown - benchmark's clients are torn down before we
+      // reach this point, so no in-flight RPCs to drain.
+      server->Shutdown(std::chrono::system_clock::now());
+    }
+    server.reset();
+    service.reset();
+    engine.reset();
+    if (!data_dir.empty()) {
+      std::error_code ec;
+      std::filesystem::remove_all(data_dir, ec);
+    }
+  }
+};
+
+// Spin up an in-process gRPC server backed by a fresh engine in a fresh
+// data dir. Caller owns the returned BenchServer and tears it down by
+// letting it go out of scope.
+BenchServer start_grpc_bench_server(const std::string &name,
+                                    std::size_t memtable_size) {
+  BenchServer h;
+  h.data_dir = std::filesystem::temp_directory_path() / ("kv_bench_" + name);
+  std::filesystem::remove_all(h.data_dir);
+  std::filesystem::create_directories(h.data_dir);
+
+  h.engine = std::make_unique<kv::Engine>(h.data_dir.string(), memtable_size);
+  h.service = std::make_unique<kv::KvStoreServiceImpl>(h.engine.get());
+
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("localhost:0", grpc::InsecureServerCredentials(),
+                           &h.port);
+  builder.RegisterService(h.service.get());
+  h.server = builder.BuildAndStart();
+  return h;
 }
 
 // Run a workload of per-op closures, timing each one individually so we can
@@ -262,6 +334,30 @@ Stats bench_crash_recovery() {
   return compute_stats(latencies_ns, total_s);
 }
 
+Stats bench_grpc_put() {
+  auto server = start_grpc_bench_server("grpc_put", memtable_small);
+  kv::KvStoreClient client("localhost:" + std::to_string(server.port));
+  const auto value = make_value();
+  return run_workload(grpc_put_ops,
+                      [&](std::size_t i) { client.put(make_key(i), value); });
+}
+
+Stats bench_grpc_get() {
+  auto server = start_grpc_bench_server("grpc_get", memtable_large);
+  kv::KvStoreClient client("localhost:" + std::to_string(server.port));
+  const auto value = make_value();
+
+  // Pre-load keys so gets have something to find.
+  for (std::size_t i = 0; i < grpc_get_ops; ++i) {
+    // Preload via the engine pointer rather than the client to avoid ~50µs gRPC
+    // overhead per put.
+    server.engine->put(make_key(i), value);
+  }
+
+  return run_workload(grpc_get_ops,
+                      [&](std::size_t i) { (void)client.get(make_key(i)); });
+}
+
 void print_markdown_table(
     const std::vector<std::pair<std::string, Stats>> &results) {
   std::println("");
@@ -300,7 +396,9 @@ int main() {
   std::println("  get_sstable    ({} ops)", get_sstable_ops);
   std::println("  get_miss       ({} ops)", get_miss_ops);
   std::println("  mixed_50_50    ({} ops)", mixed_ops);
-  std::println("  crash_recovery ({} ops)\n", crash_recovery_ops);
+  std::println("  crash_recovery ({} ops)", crash_recovery_ops);
+  std::println("  grpc_put       ({} ops)", grpc_put_ops);
+  std::println("  grpc_get       ({} ops)\n", grpc_get_ops);
 
   const auto suite_start = clock_type::now();
 
@@ -311,6 +409,8 @@ int main() {
   run_and_record("get_miss", bench_get_miss, results);
   run_and_record("mixed_50_50", bench_mixed_50_50, results);
   run_and_record("crash_recovery", bench_crash_recovery, results);
+  run_and_record("grpc_put", bench_grpc_put, results);
+  run_and_record("grpc_get", bench_grpc_get, results);
 
   const auto suite_elapsed =
       std::chrono::duration<double>(clock_type::now() - suite_start).count();
