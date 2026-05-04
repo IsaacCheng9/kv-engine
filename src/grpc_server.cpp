@@ -93,6 +93,18 @@ grpc::Status
 KvStoreServiceImpl::Scan(grpc::ServerContext *,
                          const kv::v1::ScanRequest *request,
                          grpc::ServerWriter<kv::v1::ScanResponse> *writer) {
+  // Empty start_key / end_key are allowed (mean unbounded).
+  if (request->start_key().size() > max_key_size) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "start_key size exceeds maximum allowed size of " +
+                            std::to_string(max_key_size) + " bytes");
+  }
+  if (request->end_key().size() > max_key_size) {
+    return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                        "end_key size exceeds maximum allowed size of " +
+                            std::to_string(max_key_size) + " bytes");
+  }
+
   try {
     auto it = engine_->scan(request->start_key(), request->end_key(),
                             request->limit());
