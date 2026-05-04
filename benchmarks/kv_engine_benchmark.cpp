@@ -11,11 +11,11 @@
 //   4. get_miss         - negative lookups (keys that were never inserted)
 //   5. mixed_50_50      - interleaved reads and writes, production-like
 //   6. crash_recovery   - WAL replay time on engine reopen
-//   7. grpc_put         - writes via the gRPC client over loopback
-//   8. grpc_get         - memtable reads via the gRPC client over loopback
+//   7. grpc_put          - writes via the gRPC client over loopback
+//   8. grpc_get_memtable - memtable reads via the gRPC client over loopback
 //
-// grpc_put / grpc_get measure the network + serialisation overhead of going
-// through gRPC vs the direct engine call (compare against `put` /
+// grpc_put / grpc_get_memtable measure the network + serialisation overhead
+// of going through gRPC vs the direct engine call (compare against `put` /
 // `get_memtable` rows). Loopback only - real RTT would dominate this.
 //
 // The put and get_sstable scenarios use a small memtable to force many
@@ -47,8 +47,8 @@ using clock_type = std::chrono::steady_clock;
 using ns = std::chrono::nanoseconds;
 
 // Operations per scenario. Uniform 250k across all read/write scenarios gives
-// ~1000 samples above any p99 threshold (tight percentile estimates) while
-// keeping a full benchmark run under a minute on an M1 Max.
+// ~2500 samples above p99 (tight percentile estimates) while keeping a full
+// benchmark run under a minute on an M1 Max.
 constexpr std::size_t put_ops = 250'000;
 constexpr std::size_t get_memtable_ops = 250'000;
 constexpr std::size_t get_sstable_ops = 250'000;
@@ -64,20 +64,20 @@ constexpr std::size_t crash_recovery_ops = 20;
 constexpr std::size_t crash_recovery_entries_per_op = 5'000;
 
 // gRPC scenarios pay a per-op network + serialisation cost on top of the
-// direct engine call, so each op is much slower (~10-100x). Lower op counts
-// keep the gRPC slice of the run under ~30s while still giving ~500 samples
-// above p99 for tight percentile estimates.
+// direct engine call, so each op is much slower (~10-100x). 50k keeps the
+// gRPC slice of the run under ~30s while giving ~500 samples above p99.
 constexpr std::size_t grpc_put_ops = 50'000;
-constexpr std::size_t grpc_get_ops = 50'000;
+constexpr std::size_t grpc_get_memtable_ops = 50'000;
 
 // Small memtable (64 KiB) forces frequent flushes so SSTable code paths
 // actually get exercised. The default 4 MiB memtable would keep everything
 // in memory for a 100K-op run.
 constexpr std::size_t memtable_small = 64 * 1024;
 
-// Larger memtable (4 MiB) for scenarios that want to stress the in-memory
-// path without flush interference.
-constexpr std::size_t memtable_large = 4 * 1024 * 1024;
+// Larger memtable (64 MiB) for scenarios that want to stress the in-memory
+// path without flush interference. Sized to hold 250k 116-byte entries
+// (~29 MiB) with 2x headroom, matching production LSM defaults like RocksDB.
+constexpr std::size_t memtable_large = 64 * 1024 * 1024;
 
 constexpr std::size_t value_bytes = 100;
 
@@ -342,20 +342,22 @@ Stats bench_grpc_put() {
                       [&](std::size_t i) { client.put(make_key(i), value); });
 }
 
-Stats bench_grpc_get() {
-  auto server = start_grpc_bench_server("grpc_get", memtable_large);
+Stats bench_grpc_get_memtable() {
+  auto server =
+      start_grpc_bench_server("grpc_get_memtable", memtable_large);
   kv::KvStoreClient client("localhost:" + std::to_string(server.port));
   const auto value = make_value();
 
-  // Pre-load keys so gets have something to find.
-  for (std::size_t i = 0; i < grpc_get_ops; ++i) {
-    // Preload via the engine pointer rather than the client to avoid ~50µs gRPC
-    // overhead per put.
+  // Preload via the engine pointer rather than the client to avoid the ~50µs
+  // gRPC overhead per put. This is setup, not measurement; only the read
+  // workload below is timed.
+  for (std::size_t i = 0; i < grpc_get_memtable_ops; ++i) {
     server.engine->put(make_key(i), value);
   }
 
-  return run_workload(grpc_get_ops,
-                      [&](std::size_t i) { (void)client.get(make_key(i)); });
+  return run_workload(grpc_get_memtable_ops, [&](std::size_t i) {
+    (void)client.get(make_key(i));
+  });
 }
 
 void print_markdown_table(
@@ -397,8 +399,8 @@ int main() {
   std::println("  get_miss       ({} ops)", get_miss_ops);
   std::println("  mixed_50_50    ({} ops)", mixed_ops);
   std::println("  crash_recovery ({} ops)", crash_recovery_ops);
-  std::println("  grpc_put       ({} ops)", grpc_put_ops);
-  std::println("  grpc_get       ({} ops)\n", grpc_get_ops);
+  std::println("  grpc_put          ({} ops)", grpc_put_ops);
+  std::println("  grpc_get_memtable ({} ops)\n", grpc_get_memtable_ops);
 
   const auto suite_start = clock_type::now();
 
@@ -410,7 +412,7 @@ int main() {
   run_and_record("mixed_50_50", bench_mixed_50_50, results);
   run_and_record("crash_recovery", bench_crash_recovery, results);
   run_and_record("grpc_put", bench_grpc_put, results);
-  run_and_record("grpc_get", bench_grpc_get, results);
+  run_and_record("grpc_get_memtable", bench_grpc_get_memtable, results);
 
   const auto suite_elapsed =
       std::chrono::duration<double>(clock_type::now() - suite_start).count();
