@@ -53,4 +53,29 @@ void KvStoreClient::remove(const std::string &key) {
   }
 }
 
+std::vector<std::pair<std::string, std::string>>
+KvStoreClient::scan(const std::string &start_key, const std::string &end_key,
+                    uint32_t limit) {
+  kv::v1::ScanRequest request;
+  request.set_start_key(start_key);
+  request.set_end_key(end_key);
+  request.set_limit(limit);
+
+  std::vector<std::pair<std::string, std::string>> result;
+  grpc::ClientContext context;
+  kv::v1::ScanResponse response;
+  auto reader = stub_->Scan(&context, request);
+  while (reader->Read(&response)) {
+    result.emplace_back(response.key(), response.value());
+  }
+
+  auto status = reader->Finish();
+  if (!status.ok()) {
+    throw std::runtime_error(std::format(
+        "KvStoreClient::scan failed: {} ({})", status.error_message(),
+        static_cast<int>(status.error_code())));
+  }
+  return result;
+}
+
 } // namespace kv
