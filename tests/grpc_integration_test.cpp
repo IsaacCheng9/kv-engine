@@ -219,9 +219,8 @@ TEST(GrpcIntegrationTest, ScanCancellationLeavesServerUsable) {
 
   // Use the raw stub directly: KvStoreClient::scan() always drains, but we
   // need to cancel mid-stream.
-  auto channel =
-      grpc::CreateChannel("localhost:" + std::to_string(handle.port),
-                          grpc::InsecureChannelCredentials());
+  auto channel = grpc::CreateChannel("localhost:" + std::to_string(handle.port),
+                                     grpc::InsecureChannelCredentials());
   auto stub = kv::v1::KvStoreService::NewStub(channel);
 
   grpc::ClientContext context;
