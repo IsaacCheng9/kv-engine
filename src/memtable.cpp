@@ -55,4 +55,10 @@ void Memtable::clear() {
   data_.clear();
   current_size_ = 0;
 }
+
+std::map<std::string, std::optional<std::string>> Memtable::snapshot() const {
+  std::shared_lock lock(mutex_);
+  return data_;
+}
+
 } // namespace kv
