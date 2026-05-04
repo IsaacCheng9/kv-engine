@@ -6,6 +6,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Default to Release when no build type is specified, so the kv_engine
+# library gets optimised. Without this, an unspecified build type produces
+# unoptimised code globally - benchmarks become useless and tests run
+# slower than they need to. Pass -DCMAKE_BUILD_TYPE=Debug to override.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # Sanitisers (enable with -DSANITISE=ON)
 option(SANITISE "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if(SANITISE)
