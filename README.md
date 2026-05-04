@@ -36,7 +36,6 @@ design.
 
 ### Planned Features
 
-- gRPC API layer for remote client access
 - Raft consensus for distributed replication across multiple nodes
 
 ## Architecture
@@ -96,6 +95,61 @@ cd build_tsan && ctest --output-on-failure
 Single-threaded tests pass green even when there are races that only appear
 under real contention - run the concurrency tests under TSan to flush those out.
 Both ASan and TSan builds run on every push in CI.
+
+## gRPC Server
+
+The engine is exposed over a gRPC API for remote client access. Service
+methods: `Put` / `Get` / `Delete` (unary) and `Scan` (server-streaming, range
+scans). Schema lives in `proto/kv/v1/kv.proto`.
+
+### Run
+
+```bash
+./build/kv_engine_server --data-dir /path/to/data --port 50051
+```
+
+The server creates `--data-dir` if it doesn't exist and serves on
+`localhost:port`. `SIGINT` and `SIGTERM` trigger a graceful shutdown with a
+5-second deadline for in-flight RPCs.
+
+### Client Usage
+
+```cpp
+#include "grpc_client.hpp"
+#include <print>
+
+kv::KvStoreClient client("localhost:50051");
+
+client.put("apple", "fruit");
+auto value = client.get("apple"); // std::optional<std::string>
+if (value) {
+  std::println("apple = {}", *value);
+}
+
+client.remove("apple");
+
+// Server-streaming range scan: [start_key, end_key), limit 0 = unbounded.
+auto pairs = client.scan("a", "z", 0);
+for (const auto &[k, v] : pairs) {
+  std::println("{} = {}", k, v);
+}
+```
+
+`get()` returns `std::nullopt` if the key is absent or has been deleted. All
+methods throw `std::runtime_error` on RPC failure with the gRPC status code
+and message embedded.
+
+`scan()` returns a snapshot - concurrent writes / flushes / compactions
+during the scan don't change what it yields. Tombstones are collapsed and
+shadowed older versions of a key are discarded; the caller sees only the
+newest live value per key in `[start_key, end_key)` order.
+
+### Performance
+
+On loopback (no real network RTT), gRPC adds ~120 µs round-trip vs direct
+in-process engine calls - HTTP/2 framing + protobuf serialise/deserialise +
+kernel TCP loopback. See the `grpc_*` rows in
+`docs/2026_05_04_grpc_baseline.txt` for full numbers.
 
 ## Benchmarks
 
