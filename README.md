@@ -30,6 +30,9 @@ design.
   engine level so `get()` can skip SSTables whose key range cannot contain the
   lookup key, avoiding the Bloom check and binary search entirely for
   out-of-range files
+- **gRPC API** – `Put` / `Get` / `Delete` over unary RPCs and `Scan` as
+  server-streaming for range scans; snapshot semantics so concurrent writes,
+  flushes, and compactions don't perturb in-flight scans
 
 ### Planned Features
 
@@ -40,7 +43,8 @@ design.
 
 ```mermaid
 flowchart TD
-    client[Client] -->|Put / Get / Delete| engine[Engine]
+    client[Client] -->|Put / Get / Delete / Scan| grpc[gRPC Server]
+    grpc -->|engine API| engine[Engine]
     engine -->|writes| wal[Write-Ahead Log]
     engine -->|writes / reads| memtable[Memtable<br/>sorted in-memory]
     memtable -->|flush when full| l0[L0 SSTables<br/>overlapping key ranges]
@@ -139,3 +143,6 @@ comparisons.
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op
   populates a fresh WAL, destroys the engine, and times the reopen. Measures the
   cost of the durability guarantee after a simulated crash
+- **grpc_put** / **grpc_get_memtable** – same workloads as `put` and
+  `get_memtable` but issued through the gRPC client to a loopback server.
+  Difference vs the direct-call rows is the gRPC + serialisation tax
