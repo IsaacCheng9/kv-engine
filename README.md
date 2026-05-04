@@ -93,7 +93,7 @@ cd build_tsan && ctest --output-on-failure
 ```
 
 Single-threaded tests pass green even when there are races that only appear
-under real contention - run the concurrency tests under TSan to flush those out.
+under real contention – run the concurrency tests under TSan to flush those out.
 Both ASan and TSan builds run on every push in CI.
 
 ## gRPC Server
@@ -139,7 +139,7 @@ for (const auto &[k, v] : pairs) {
 methods throw `std::runtime_error` on RPC failure with the gRPC status code
 and message embedded.
 
-`scan()` returns a snapshot - concurrent writes / flushes / compactions
+`scan()` returns a snapshot – concurrent writes / flushes / compactions
 during the scan don't change what it yields. Tombstones are collapsed and
 shadowed older versions of a key are discarded; the caller sees only the
 newest live value per key in `[start_key, end_key)` order.
@@ -147,7 +147,7 @@ newest live value per key in `[start_key, end_key)` order.
 ### Performance
 
 On loopback (no real network RTT), gRPC adds ~120 µs round-trip vs direct
-in-process engine calls - HTTP/2 framing + protobuf serialise/deserialise +
+in-process engine calls – HTTP/2 framing + protobuf serialise/deserialise +
 kernel TCP loopback. See the `grpc_*` rows in
 `docs/2026_05_04_grpc_baseline.txt` for full numbers.
 
