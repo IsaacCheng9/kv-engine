@@ -27,7 +27,7 @@ public:
                     grpc::ServerWriter<kv::v1::ScanResponse> *writer) override;
 
 private:
-  [[maybe_unused]] Engine *engine_;
+  Engine *engine_;
 };
 
 } // namespace kv
