@@ -131,18 +131,25 @@ TEST_F(EngineConcurrencyTest, ConcurrentReadersDuringWrites) {
   EXPECT_EQ(read_errors.load(), 0);
 }
 
+// Verifies snapshot isolation from concurrent puts. The iterator captures a
+// memtable copy at scan() time; later puts modify the live memtable but the
+// copy is unchanged, so the iterator yields exactly the pre-scan keys
+// regardless of how many writes race alongside the drain. Pure memtable
+// test - default 4 MiB memtable is far larger than the test's data so no
+// flush is triggered.
 TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentWrites) {
   constexpr int initial_keys = 50;
   constexpr int num_writes = 100;
   Engine engine(data_dir.string());
 
-  // Pre-populate `initial_keys` keys, then snapshot and store the iterator.
+  // Pre-populate the engine, then take the scan snapshot.
   for (int i = 0; i < initial_keys; ++i) {
     engine.put(std::format("key{:03}", i), std::format("v{}", i));
   }
   auto it = engine.scan("", "", 0);
 
-  // Set up the writer thread, drain, then join.
+  // Spawn the writer AFTER scan() returns, so its puts cannot influence the
+  // already-fixed snapshot. Drain runs concurrently with the writer.
   std::thread writer([&engine]() {
     for (int i = initial_keys; i < initial_keys + num_writes; ++i) {
       engine.put(std::format("key{:03}", i), std::format("v{}", i));
@@ -158,19 +165,25 @@ TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentWrites) {
   }
 }
 
+// Verifies snapshot isolation across the memtable->SSTable transition. The
+// writer's large-value puts overflow the small memtable, triggering flushes
+// that clear the live memtable and write SSTables. The scan's snapshot is a
+// copy taken before the flush, so it still yields the pre-flush keys even
+// though the underlying live memtable has been emptied and replaced.
 TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentFlush) {
   constexpr int initial_keys = 5;
-  // Triggers ~2 flushes, below the 4-file compaction threshold.
+  // 4 writer puts trigger ~2 flushes - below the 4-file compaction threshold,
+  // so this test exercises flush isolation only, not compaction.
   constexpr int num_writes = 4;
-  // Use a small memtable so that the writer's puts trigger a flush.
+  // Small memtable so the writer's puts overflow it and trigger flushes.
   Engine engine(data_dir.string(), 100);
   for (int i = 0; i < initial_keys; ++i) {
     engine.put(std::format("key{:03}", i), std::format("v{}", i));
   }
   auto it = engine.scan("", "", 0);
 
-  // Perform puts with the writer thread that overflow the memtable by using
-  // larger values.
+  // Writer uses 50-byte values that overflow the 100-byte memtable per put,
+  // forcing a flush every couple of puts.
   std::thread writer([&engine]() {
     for (int i = initial_keys; i < initial_keys + num_writes; ++i) {
       engine.put(std::format("key{:03}", i), std::string(50, 'x'));
