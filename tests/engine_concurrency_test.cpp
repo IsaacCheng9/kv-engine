@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <format>
 #include <gtest/gtest.h>
 #include <string>
 #include <thread>
@@ -126,6 +127,33 @@ TEST_F(EngineConcurrencyTest, ConcurrentReadersDuringWrites) {
   }
 
   EXPECT_EQ(read_errors.load(), 0);
+}
+
+TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentWrites) {
+  constexpr int initial_keys = 50;
+  constexpr int num_writes = 100;
+  Engine engine(data_dir.string());
+
+  // Pre-populate `initial_keys` keys, then snapshot and store the iterator.
+  for (int i = 0; i < initial_keys; ++i) {
+    engine.put(std::format("key{:03}", i), std::format("v{}", i));
+  }
+  auto it = engine.scan("", "", 0);
+
+  // Set up the writer thread, drain, then join.
+  std::thread writer([&engine]() {
+    for (int i = initial_keys; i < initial_keys + num_writes; ++i) {
+      engine.put(std::format("key{:03}", i), std::format("v{}", i));
+    }
+  });
+  auto results = drain(std::move(it));
+  writer.join();
+
+  ASSERT_EQ(results.size(), static_cast<std::size_t>(initial_keys));
+  for (int i = 0; i < initial_keys; ++i) {
+    ASSERT_EQ(results[i].first, std::format("key{:03}", i));
+    ASSERT_EQ(results[i].second, std::format("v{}", i));
+  }
 }
 
 } // namespace
