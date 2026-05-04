@@ -313,23 +313,34 @@ void Engine::compaction_loop() {
 ScanIterator Engine::scan(std::string start_key, std::string end_key,
                           uint32_t limit) const {
   std::map<std::string, std::optional<std::string>> memtable_snap;
-  std::vector<std::string> sstable_paths;
+  std::vector<std::unique_ptr<SSTableReader>> sstable_readers;
 
   {
     std::shared_lock<std::shared_mutex> lock(state_mutex_);
     memtable_snap = memtable_.snapshot();
+    // Open SSTable readers under the lock, not just snapshot the paths.
+    // Doing the file opens after releasing the lock would race with
+    // compaction: compact_level_zero unlinks L0 files outside state_mutex_,
+    // so a path we listed but hadn't opened yet could be unlinked before we
+    // got to open(2). Opening here means each reader holds an fd that keeps
+    // the file alive (POSIX semantics: an unlinked file persists until the
+    // last fd closes) for the iterator's lifetime, even if compaction
+    // unlinks the path mid-scan.
+    //
     // Build paths in newest-first order: outer level ascending (level 0 is
     // newest), inner level reverse (highest ID per level is newest).
     for (std::size_t level = 0; level < level_files_.size(); ++level) {
       for (auto it = level_files_[level].rbegin();
            it != level_files_[level].rend(); ++it) {
-        sstable_paths.push_back(
-            std::format("{}/sstable_{}_{}.dat", data_dir_, level, *it));
+        auto path = std::format("{}/sstable_{}_{}.dat", data_dir_, level, *it);
+        auto reader = std::make_unique<SSTableReader>(path);
+        reader->seek_to_first();
+        sstable_readers.push_back(std::move(reader));
       }
     }
   }
 
-  return ScanIterator(std::move(memtable_snap), std::move(sstable_paths),
+  return ScanIterator(std::move(memtable_snap), std::move(sstable_readers),
                       std::move(start_key), std::move(end_key), limit);
 }
 

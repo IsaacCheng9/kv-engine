@@ -1,30 +1,20 @@
 #include "scan_iterator.hpp"
 #include "sstable_reader.hpp"
-#include <memory>
 
 namespace kv {
 
 ScanIterator::ScanIterator(
     std::map<std::string, std::optional<std::string>> memtable_snapshot,
-    std::vector<std::string> sstable_paths, std::string start_key,
-    std::string end_key, uint32_t limit)
+    std::vector<std::unique_ptr<SSTableReader>> sstable_readers,
+    std::string start_key, std::string end_key, uint32_t limit)
     : memtable_snapshot_(std::move(memtable_snapshot)),
+      sstable_cursors_(std::move(sstable_readers)),
       start_key_(std::move(start_key)), end_key_(std::move(end_key)),
       limit_(limit) {
 
   // Position the memtable cursor at the first key >= start_key. lower_bound()
   // is O(log n) and gives end() if the start_key is past every key in the map.
   memtable_cursor_ = memtable_snapshot_.lower_bound(start_key_);
-
-  // Open one fresh SSTableReader per snapshot path. Each reader's sequential
-  // cursor is private to this scan, so no contention with the engine's cached
-  // point-lookup readers (which use pread).
-  sstable_cursors_.reserve(sstable_paths.size());
-  for (const auto &path : sstable_paths) {
-    auto reader = std::make_unique<SSTableReader>(path);
-    reader->seek_to_first();
-    sstable_cursors_.push_back(std::move(reader));
-  }
 
   // Prime the heap with the first in-range entry from each source.
   // Source 0 = memtable

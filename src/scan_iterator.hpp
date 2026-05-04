@@ -20,13 +20,17 @@ namespace kv {
 // compactions don't affect what the iterator yields.
 class ScanIterator {
 public:
-  // Memtable snapshot is moved in (caller copies it under state_mutex_).
-  // sstable_paths must be in newest-first order across levels (the memtable
-  // is implicitly newer than all of them). limit = 0 means unbounded.
+  // Memtable snapshot and pre-opened SSTable readers are moved in. The
+  // caller (Engine::scan) takes the snapshot and opens the readers under
+  // state_mutex_ so paths can't be unlinked by compaction between listing
+  // them and opening them. sstable_readers must be in newest-first order
+  // across levels (the memtable is implicitly newer than all of them) and
+  // each must already be seeked to its first entry. limit = 0 means
+  // unbounded.
   ScanIterator(
       std::map<std::string, std::optional<std::string>> memtable_snapshot,
-      std::vector<std::string> sstable_paths, std::string start_key,
-      std::string end_key, uint32_t limit);
+      std::vector<std::unique_ptr<SSTableReader>> sstable_readers,
+      std::string start_key, std::string end_key, uint32_t limit);
 
   // Returns the next live (key, value) pair, or nullopt when exhausted.
   std::optional<std::pair<std::string, std::string>> next();
