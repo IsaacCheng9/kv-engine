@@ -1,0 +1,40 @@
+kv-engine benchmark
+  put            (250000 ops)
+  get_memtable   (250000 ops)
+  get_sstable    (250000 ops)
+  get_miss       (250000 ops)
+  mixed_50_50    (250000 ops)
+  crash_recovery (20 ops)
+  grpc_put          (50000 ops)
+  grpc_get_memtable (50000 ops)
+
+Running put...
+  put finished in 16.94s
+Running get_memtable...
+  get_memtable finished in 0.10s
+Running get_sstable...
+  get_sstable finished in 2.14s
+Running get_miss...
+  get_miss finished in 3.44s
+Running mixed_50_50...
+  mixed_50_50 finished in 8.26s
+Running crash_recovery...
+  crash_recovery finished in 4.08s
+Running grpc_put...
+  grpc_put finished in 7.31s
+Running grpc_get_memtable...
+  grpc_get_memtable finished in 6.32s
+
+Benchmark suite finished in 93.02s (includes scenario setup + measurement).
+
+| Scenario          | Ops/sec   | p50 (us) | p99 (us) | Total (ms) |
+|-------------------|-----------|----------|----------|------------|
+| put               |     14762 |    43.04 |   114.67 |   16935.20 |
+| get_memtable      |   2627992 |     0.33 |     0.62 |      95.13 |
+| get_sstable       |    116558 |     8.67 |    15.21 |    2144.85 |
+| get_miss          |     72604 |    13.62 |    18.54 |    3443.32 |
+| mixed_50_50       |     30255 |    18.88 |    76.38 |    8263.14 |
+| crash_recovery    |         5 | 16130.21 | 16572.67 |    4082.17 |
+| grpc_put          |      6844 |   120.71 |   222.79 |    7305.70 |
+| grpc_get_memtable |      7917 |   123.42 |   176.25 |    6315.25 |
+
