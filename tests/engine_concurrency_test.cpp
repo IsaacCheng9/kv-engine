@@ -1,6 +1,8 @@
 #include "engine.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <gtest/gtest.h>
@@ -184,5 +186,68 @@ TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentFlush) {
   }
 }
 
+// Verifies the iterator's open SSTable file descriptors keep working even
+// after compaction has unlinked the underlying L0 files. POSIX semantics:
+// when a file is unlinked while an fd is still open, the data persists
+// until the fd is closed - so the iterator finishes reading even though
+// the paths are gone from anyone else's view of the filesystem.
+TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentCompaction) {
+  constexpr int initial_keys = 3;
+  constexpr int writer_key_index = 50;
+  Engine engine(data_dir.string(), 50);
+  // Each pre-populate put overflows the 50-byte memtable, forcing an
+  // immediate flush. Three puts thus create three L0 files. Values use
+  // 'a' + i so each pre-populate has a distinct, recognisable pattern.
+  for (int i = 0; i < initial_keys; ++i) {
+    engine.put(std::format("key{:03}", i), std::string(50, 'a' + i));
+  }
+  auto it = engine.scan("", "", 0);
+
+  // Capture the three L0 file paths so we can poll for deletion later, and
+  // make sure these paths exist.
+  std::vector<std::filesystem::path> l0_files;
+  for (int i = 0; i < initial_keys; ++i) {
+    l0_files.push_back(data_dir / std::format("sstable_0_{}.dat", i));
+  }
+  for (const auto &path : l0_files) {
+    ASSERT_TRUE(std::filesystem::exists(path));
+  }
+
+  // Perform one more put with the writer thread to create a 4th L0 file,
+  // resulting in a compaction.
+  std::thread writer([&engine]() {
+    engine.put(std::format("key{:03}", writer_key_index + 1),
+               std::string(50, 'x'));
+  });
+  writer.join();
+
+  // Poll for the 3 original L0 files to be deleted (compaction signal).
+  constexpr auto poll_interval = std::chrono::milliseconds(10);
+  constexpr auto timeout = std::chrono::seconds(5);
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+
+  bool all_deleted = false;
+  while (std::chrono::steady_clock::now() < deadline) {
+    all_deleted = std::ranges::all_of(
+        l0_files, [](const auto &p) { return !std::filesystem::exists(p); });
+    if (all_deleted) {
+      break;
+    }
+    std::this_thread::sleep_for(poll_interval);
+  }
+  ASSERT_TRUE(all_deleted)
+      << "Compaction did not retire L0 files within timeout";
+
+  // Drain the scan iterator to ensure all results are consumed.
+  auto results = drain(std::move(it));
+
+  ASSERT_EQ(results.size(), static_cast<std::size_t>(initial_keys));
+  for (int i = 0; i < initial_keys; ++i) {
+    ASSERT_EQ(results[i].first, std::format("key{:03}", i));
+    ASSERT_EQ(results[i].second, std::string(50, 'a' + i));
+  }
+}
+
 } // namespace
+
 } // namespace kv
