@@ -45,23 +45,23 @@ void ScanIterator::advance_source(std::size_t source_index) {
     heap_.push({memtable_cursor_->first, memtable_cursor_->second, 0});
     ++memtable_cursor_;
     return;
-
-    // SSTable source - the SSTableReader has no seek(key), so on the first
-    // call we walk forward from the file's start until we hit start_key.
-    // Subsequent calls just consume the next sequential entry (which is
-    // already >= start_key by induction).
-    auto &reader = sstable_cursors_[source_index - 1];
-    std::string key;
-    std::optional<std::string> value;
-    while (reader->next_entry(key, value)) {
-      // Walk forward until we hit the start_key_.
-      if (key >= start_key_) {
-        heap_.push({std::move(key), std::move(value), source_index});
-        return;
-      }
-    }
-    // If we exhausted the reader, we have nothing to push.
   }
+
+  // SSTable source - the SSTableReader has no seek(key), so on the first
+  // call we walk forward from the file's start until we hit start_key.
+  // Subsequent calls just consume the next sequential entry (which is
+  // already >= start_key by induction).
+  auto &reader = sstable_cursors_[source_index - 1];
+  std::string key;
+  std::optional<std::string> value;
+  while (reader->next_entry(key, value)) {
+    // Walk forward until we hit the start_key_.
+    if (key >= start_key_) {
+      heap_.push({std::move(key), std::move(value), source_index});
+      return;
+    }
+  }
+  // If we exhausted the reader, we have nothing to push.
 }
 
 } // namespace kv
