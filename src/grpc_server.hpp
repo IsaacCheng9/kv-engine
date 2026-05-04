@@ -22,6 +22,10 @@ public:
                       const kv::v1::DeleteRequest *request,
                       kv::v1::DeleteResponse *response) override;
 
+  grpc::Status Scan(grpc::ServerContext *context,
+                    const kv::v1::ScanRequest *request,
+                    grpc::ServerWriter<kv::v1::ScanResponse> *writer) override;
+
 private:
   [[maybe_unused]] Engine *engine_;
 };
