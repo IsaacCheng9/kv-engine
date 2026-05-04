@@ -150,6 +150,24 @@ TEST(GrpcIntegrationTest, OversizedValueOnPutFails) {
   EXPECT_THROW(client.put("key", huge_value), std::runtime_error);
 }
 
+TEST(GrpcIntegrationTest, OversizedStartKeyOnScanFails) {
+  // Same 64 KiB cap as Put, applied to scan range bounds. Empty start_key
+  // is valid (means unbounded), so only oversized is tested.
+  auto handle = start_server("oversized_scan_start");
+  auto client = make_client(handle);
+
+  std::string huge_start(64 * 1024 + 1, 's');
+  EXPECT_THROW((void)client.scan(huge_start, "", 0), std::runtime_error);
+}
+
+TEST(GrpcIntegrationTest, OversizedEndKeyOnScanFails) {
+  auto handle = start_server("oversized_scan_end");
+  auto client = make_client(handle);
+
+  std::string huge_end(64 * 1024 + 1, 'e');
+  EXPECT_THROW((void)client.scan("", huge_end, 0), std::runtime_error);
+}
+
 TEST(GrpcIntegrationTest, ConcurrentClientWritesArePersisted) {
   // 8 client-thread pairs, each doing 100 puts on distinct keys
   // (namespaced by thread id). After all threads join, verify every key is
