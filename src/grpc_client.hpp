@@ -5,7 +5,8 @@
 #include <memory>
 #include <optional>
 #include <string>
-
+#include <utility>
+#include <vector>
 namespace kv {
 
 class KvStoreClient {
@@ -19,6 +20,8 @@ public:
   void put(const std::string &key, const std::string &value);
   [[nodiscard]] std::optional<std::string> get(const std::string &key);
   void remove(const std::string &key);
+  [[nodiscard]] std::vector<std::pair<std::string, std::string>>
+  scan(const std::string &start_key, const std::string &end_key, size_t limit);
 
 private:
   std::unique_ptr<kv::v1::KvStoreService::Stub> stub_;
