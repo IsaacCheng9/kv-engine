@@ -11,12 +11,15 @@
 //   4. get_miss         - negative lookups (keys that were never inserted)
 //   5. mixed_50_50      - interleaved reads and writes, production-like
 //   6. crash_recovery   - WAL replay time on engine reopen
-//   7. grpc_put          - writes via the gRPC client over loopback
-//   8. grpc_get_memtable - memtable reads via the gRPC client over loopback
+//   7. scan             - direct in-process range scan over a populated engine
+//   8. grpc_put          - writes via the gRPC client over loopback
+//   9. grpc_get_memtable - memtable reads via the gRPC client over loopback
+//  10. grpc_scan         - server-streaming range scan via the gRPC client
 //
-// grpc_put / grpc_get_memtable measure the network + serialisation overhead
-// of going through gRPC vs the direct engine call (compare against `put` /
-// `get_memtable` rows). Loopback only - real RTT would dominate this.
+// grpc_put / grpc_get_memtable / grpc_scan measure the network +
+// serialisation overhead of going through gRPC vs the direct engine call
+// (compare against `put` / `get_memtable` / `scan` rows). Loopback only -
+// real RTT would dominate this.
 //
 // The put and get_sstable scenarios use a small memtable to force many
 // flushes, so SSTable code paths actually get exercised. Tune the memtable
@@ -68,6 +71,16 @@ constexpr std::size_t crash_recovery_entries_per_op = 5'000;
 // gRPC slice of the run under ~30s while giving ~500 samples above p99.
 constexpr std::size_t grpc_put_ops = 50'000;
 constexpr std::size_t grpc_get_memtable_ops = 50'000;
+
+// Scan scenarios: each op is one full-range scan returning `scan_entries`
+// rows. Per-op latency is heavier than a unary call (drains N rows), so op
+// counts are correspondingly smaller. Direct scan ops chosen to keep the
+// scenario under ~5s; grpc_scan under ~15s. Both share `scan_entries` so
+// per-op work is identical and the latency delta isolates the streaming
+// transport overhead.
+constexpr std::size_t scan_entries = 500;
+constexpr std::size_t scan_ops = 5'000;
+constexpr std::size_t grpc_scan_ops = 1'000;
 
 // Small memtable (64 KiB) forces frequent flushes so SSTable code paths
 // actually get exercised. The default 4 MiB memtable would keep everything
@@ -334,6 +347,31 @@ Stats bench_crash_recovery() {
   return compute_stats(latencies_ns, total_s);
 }
 
+Stats bench_scan() {
+  const auto dir = fresh_dir("scan");
+  const auto value = make_value();
+  Stats stats;
+  {
+    kv::Engine engine(dir, memtable_large);
+    for (std::size_t i = 0; i < scan_entries; ++i) {
+      engine.put(make_key(i), value);
+    }
+    // Each op is one full-range scan that drains all scan_entries rows into
+    // a vector, mirroring what bench_grpc_scan's client.scan() does so the
+    // two scenarios measure equivalent caller-side work.
+    stats = run_workload(scan_ops, [&](std::size_t) {
+      auto it = engine.scan("", "", 0);
+      std::vector<std::pair<std::string, std::string>> results;
+      results.reserve(scan_entries);
+      while (auto entry = it.next()) {
+        results.emplace_back(std::move(*entry));
+      }
+    });
+  }
+  std::filesystem::remove_all(dir);
+  return stats;
+}
+
 Stats bench_grpc_put() {
   auto server = start_grpc_bench_server("grpc_put", memtable_small);
   kv::KvStoreClient client("localhost:" + std::to_string(server.port));
@@ -358,6 +396,26 @@ Stats bench_grpc_get_memtable() {
   return run_workload(grpc_get_memtable_ops, [&](std::size_t i) {
     (void)client.get(make_key(i));
   });
+}
+
+Stats bench_grpc_scan() {
+  auto server = start_grpc_bench_server("grpc_scan", memtable_large);
+  kv::KvStoreClient client("localhost:" + std::to_string(server.port));
+  const auto value = make_value();
+
+  // Preload via the engine pointer rather than the client to avoid the
+  // ~50µs gRPC overhead per put. This is setup, not measurement; only the
+  // scan workload below is timed.
+  for (std::size_t i = 0; i < scan_entries; ++i) {
+    server.engine->put(make_key(i), value);
+  }
+
+  // Each op is one full-range scan returning scan_entries rows over
+  // server-streaming. Per-op latency captures the streaming overhead:
+  // stream open, N rows of HTTP/2 framing + protobuf serialise/deserialise,
+  // stream close, Finish().
+  return run_workload(grpc_scan_ops,
+                      [&](std::size_t) { (void)client.scan("", "", 0); });
 }
 
 void print_markdown_table(
@@ -399,8 +457,12 @@ int main() {
   std::println("  get_miss       ({} ops)", get_miss_ops);
   std::println("  mixed_50_50    ({} ops)", mixed_ops);
   std::println("  crash_recovery ({} ops)", crash_recovery_ops);
+  std::println("  scan           ({} ops, {} entries each)", scan_ops,
+               scan_entries);
   std::println("  grpc_put          ({} ops)", grpc_put_ops);
-  std::println("  grpc_get_memtable ({} ops)\n", grpc_get_memtable_ops);
+  std::println("  grpc_get_memtable ({} ops)", grpc_get_memtable_ops);
+  std::println("  grpc_scan         ({} ops, {} entries each)\n", grpc_scan_ops,
+               scan_entries);
 
   const auto suite_start = clock_type::now();
 
@@ -411,8 +473,10 @@ int main() {
   run_and_record("get_miss", bench_get_miss, results);
   run_and_record("mixed_50_50", bench_mixed_50_50, results);
   run_and_record("crash_recovery", bench_crash_recovery, results);
+  run_and_record("scan", bench_scan, results);
   run_and_record("grpc_put", bench_grpc_put, results);
   run_and_record("grpc_get_memtable", bench_grpc_get_memtable, results);
+  run_and_record("grpc_scan", bench_grpc_scan, results);
 
   const auto suite_elapsed =
       std::chrono::duration<double>(clock_type::now() - suite_start).count();

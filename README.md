@@ -61,7 +61,8 @@ with libc++ 19+, or Apple Clang 16+ (Xcode 16+).
 Also requires gRPC and Protobuf:
 
 - macOS: `brew install grpc protobuf`
-- Ubuntu/Debian: `sudo apt-get install libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc`
+- Ubuntu/Debian:
+  `sudo apt-get install libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc`
 
 ```bash
 cmake -B build -DSANITISE=ON
@@ -98,9 +99,9 @@ Both ASan and TSan builds run on every push in CI.
 
 ## gRPC Server
 
-The engine is exposed over a gRPC API for remote client access. Service
-methods: `Put` / `Get` / `Delete` (unary) and `Scan` (server-streaming, range
-scans). Schema lives in `proto/kv/v1/kv.proto`.
+The engine is exposed over a gRPC API for remote client access. Service methods:
+`Put` / `Get` / `Delete` (unary) and `Scan` (server-streaming, range scans).
+Schema lives in `proto/kv/v1/kv.proto`.
 
 ### Run
 
@@ -136,13 +137,13 @@ for (const auto &[k, v] : pairs) {
 ```
 
 `get()` returns `std::nullopt` if the key is absent or has been deleted. All
-methods throw `std::runtime_error` on RPC failure with the gRPC status code
-and message embedded.
+methods throw `std::runtime_error` on RPC failure with the gRPC status code and
+message embedded.
 
-`scan()` returns a snapshot – concurrent writes / flushes / compactions
-during the scan don't change what it yields. Tombstones are collapsed and
-shadowed older versions of a key are discarded; the caller sees only the
-newest live value per key in `[start_key, end_key)` order.
+`scan()` returns a snapshot – concurrent writes / flushes / compactions during
+the scan don't change what it yields. Tombstones are collapsed and shadowed
+older versions of a key are discarded; the caller sees only the newest live
+value per key in `[start_key, end_key)` order.
 
 ### Performance
 
@@ -197,6 +198,11 @@ comparisons.
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op
   populates a fresh WAL, destroys the engine, and times the reopen. Measures the
   cost of the durability guarantee after a simulated crash
-- **grpc_put** / **grpc_get_memtable** – same workloads as `put` and
-  `get_memtable` but issued through the gRPC client to a loopback server.
-  Difference vs the direct-call rows is the gRPC + serialisation tax
+- **scan** – direct in-process range scan over a populated engine. Each op
+  drains 500 sorted `(key, value)` pairs into a vector via the `ScanIterator`'s
+  k-way merge across memtable + SSTables. Measures per-row iteration cost with
+  no transport overhead
+- **grpc_put** / **grpc_get_memtable** / **grpc_scan** – same workloads as
+  `put`, `get_memtable`, and `scan` but issued through the gRPC client to a
+  loopback server. Difference vs the direct-call rows is the gRPC +
+  serialisation tax (per-call for unary, per-row for streaming `scan`)
