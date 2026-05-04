@@ -63,6 +63,7 @@ add_library(kv_engine
     src/io_utils.cpp
     src/log_file.cpp
     src/memtable.cpp
+    src/scan_iterator.cpp
     src/sstable_reader.cpp
     src/sstable_writer.cpp
     src/wal.cpp
