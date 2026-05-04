@@ -3,6 +3,7 @@
 #define KV_ENGINE_ENGINE_HPP
 
 #include "memtable.hpp"
+#include "scan_iterator.hpp"
 #include "sstable_reader.hpp"
 #include "wal.hpp"
 #include <condition_variable>
@@ -28,6 +29,8 @@ public:
   void put(const std::string &key, const std::string &value);
   [[nodiscard]] std::optional<std::string> get(const std::string &key) const;
   void remove(const std::string &key);
+  [[nodiscard]] ScanIterator scan(std::string start_key, std::string end_key,
+                                  uint32_t limit) const;
 
 private:
   void flush_if_full();

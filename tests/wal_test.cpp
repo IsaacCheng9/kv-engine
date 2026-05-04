@@ -107,7 +107,7 @@ TEST(WALTest, ReplayWithCorruptedRecord) {
   // Corrupt the file by truncating the last 10 bytes.
   {
     auto file_size = std::filesystem::file_size(path);
-    truncate(path.c_str(), file_size - 10);
+    ASSERT_EQ(truncate(path.c_str(), file_size - 10), 0);
   }
 
   Memtable memtable;

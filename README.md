@@ -30,17 +30,20 @@ design.
   engine level so `get()` can skip SSTables whose key range cannot contain the
   lookup key, avoiding the Bloom check and binary search entirely for
   out-of-range files
+- **gRPC API** – `Put` / `Get` / `Delete` over unary RPCs and `Scan` as
+  server-streaming for range scans; snapshot semantics so concurrent writes,
+  flushes, and compactions don't perturb in-flight scans
 
 ### Planned Features
 
-- gRPC API layer for remote client access
 - Raft consensus for distributed replication across multiple nodes
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    client[Client] -->|Put / Get / Delete| engine[Engine]
+    client[Client] -->|Put / Get / Delete / Scan| grpc[gRPC Server]
+    grpc -->|engine API| engine[Engine]
     engine -->|writes| wal[Write-Ahead Log]
     engine -->|writes / reads| memtable[Memtable<br/>sorted in-memory]
     memtable -->|flush when full| l0[L0 SSTables<br/>overlapping key ranges]
@@ -58,7 +61,8 @@ with libc++ 19+, or Apple Clang 16+ (Xcode 16+).
 Also requires gRPC and Protobuf:
 
 - macOS: `brew install grpc protobuf`
-- Ubuntu/Debian: `sudo apt-get install libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc`
+- Ubuntu/Debian:
+  `sudo apt-get install libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc`
 
 ```bash
 cmake -B build -DSANITISE=ON
@@ -90,8 +94,69 @@ cd build_tsan && ctest --output-on-failure
 ```
 
 Single-threaded tests pass green even when there are races that only appear
-under real contention - run the concurrency tests under TSan to flush those out.
+under real contention – run the concurrency tests under TSan to flush those out.
 Both ASan and TSan builds run on every push in CI.
+
+## gRPC Server
+
+The engine is exposed over a gRPC API for remote client access. Service methods:
+`Put` / `Get` / `Delete` (unary) and `Scan` (server-streaming, range scans).
+Schema lives in `proto/kv/v1/kv.proto`.
+
+### Run
+
+```bash
+./build/kv_engine_server --data-dir /path/to/data --port 50051
+```
+
+The server creates `--data-dir` if it doesn't exist and serves on
+`localhost:port`. `SIGINT` and `SIGTERM` trigger a graceful shutdown with a
+5-second deadline for in-flight RPCs.
+
+### Client Usage
+
+```cpp
+#include "grpc_client.hpp"
+#include <print>
+
+kv::KvStoreClient client("localhost:50051");
+
+client.put("apple", "fruit");
+auto value = client.get("apple"); // std::optional<std::string>
+if (value) {
+  std::println("apple = {}", *value);
+}
+
+client.remove("apple");
+
+// Server-streaming range scan: [start_key, end_key), limit 0 = unbounded.
+auto pairs = client.scan("a", "z", 0);
+for (const auto &[k, v] : pairs) {
+  std::println("{} = {}", k, v);
+}
+```
+
+`get()` returns `std::nullopt` if the key is absent or has been deleted. All
+methods throw `std::runtime_error` on RPC failure with the gRPC status code and
+message embedded.
+
+`scan()` returns a snapshot – concurrent writes / flushes / compactions during
+the scan don't change what it yields. Tombstones are collapsed and shadowed
+older versions of a key are discarded; the caller sees only the newest live
+value per key in `[start_key, end_key)` order.
+
+### Performance
+
+On loopback (no real network RTT), gRPC adds ~130 µs round-trip vs direct
+in-process engine calls – HTTP/2 framing + protobuf serialise/deserialise +
+kernel TCP loopback. See the `grpc_*` rows in
+`docs/2026_05_05_grpc_with_scan_baseline.txt` for full numbers.
+
+Streaming RPCs amortise that overhead: `grpc_scan` measures ~8.5 µs per row vs
+~130 µs per unary call. Server-streaming pays the HTTP/2 framing cost once per
+stream rather than once per row, so the per-operation gRPC tax shrinks ~6x for
+range queries. This is the argument for using server-streaming `Scan` over a
+cursor-based unary API for `Scan`-shaped workloads.
 
 ## Benchmarks
 
@@ -139,3 +204,11 @@ comparisons.
 - **crash_recovery** – time to replay a populated WAL on engine startup. Each op
   populates a fresh WAL, destroys the engine, and times the reopen. Measures the
   cost of the durability guarantee after a simulated crash
+- **scan** – direct in-process range scan over a populated engine. Each op
+  drains 500 sorted `(key, value)` pairs into a vector via the `ScanIterator`'s
+  k-way merge across memtable + SSTables. Measures per-row iteration cost with
+  no transport overhead
+- **grpc_put** / **grpc_get_memtable** / **grpc_scan** – same workloads as
+  `put`, `get_memtable`, and `scan` but issued through the gRPC client to a
+  loopback server. Difference vs the direct-call rows is the gRPC +
+  serialisation tax (per-call for unary, per-row for streaming `scan`)

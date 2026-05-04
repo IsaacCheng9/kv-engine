@@ -15,6 +15,12 @@ service KvStoreService {
   // Deletes the value for `key`. Returns OK whether or not the key existed -
   // delete is idempotent.
   rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // Streams key-value pairs in [start_key, end_key) in sorted key order. Empty
+  // start_key = scan from the beginning; empty end_key = scan to the end.
+  // limit = 0 means unbounded; otherwise stops after `limit` results. Returns
+  // OK after the last pair; CANCELLED if the client closes early.
+  rpc Scan(ScanRequest) returns (stream ScanResponse);
 }
 
 message PutRequest {
@@ -37,3 +43,14 @@ message DeleteRequest {
 }
 
 message DeleteResponse {}
+
+message ScanRequest {
+  bytes start_key = 1; // Inclusive, empty = scan from the beginning.
+  bytes end_key = 2; // Exclusive, empty = scan to the end.
+  uint32 limit = 3; // 0 means unbounded.
+}
+
+message ScanResponse {
+  bytes key = 1;
+  bytes value = 2;
+}

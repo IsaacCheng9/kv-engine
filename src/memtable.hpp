@@ -33,6 +33,8 @@ public:
     std::shared_lock lock(mutex_);
     return current_size_ >= max_size_;
   }
+  [[nodiscard]] std::map<std::string, std::optional<std::string>>
+  snapshot() const;
 
 private:
   std::map<std::string, std::optional<std::string>> data_;

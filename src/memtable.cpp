@@ -55,4 +55,14 @@ void Memtable::clear() {
   data_.clear();
   current_size_ = 0;
 }
+
+std::map<std::string, std::optional<std::string>> Memtable::snapshot() const {
+  // Copies the full map under the shared lock - blocks writers (who need the
+  // exclusive lock) for O(n). For our scale (tens of MiB per memtable) this
+  // is a few ms, acceptable. A production engine would use copy-on-write or
+  // persistent data structures to avoid the linear copy.
+  std::shared_lock lock(mutex_);
+  return data_;
+}
+
 } // namespace kv

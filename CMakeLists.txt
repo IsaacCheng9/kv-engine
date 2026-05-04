@@ -6,6 +6,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Default to Release when no build type is specified, so the kv_engine
+# library gets optimised. Without this, an unspecified build type produces
+# unoptimised code globally - benchmarks become useless and tests run
+# slower than they need to. Pass -DCMAKE_BUILD_TYPE=Debug to override.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # Sanitisers (enable with -DSANITISE=ON)
 option(SANITISE "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 if(SANITISE)
@@ -63,6 +71,7 @@ add_library(kv_engine
     src/io_utils.cpp
     src/log_file.cpp
     src/memtable.cpp
+    src/scan_iterator.cpp
     src/sstable_reader.cpp
     src/sstable_writer.cpp
     src/wal.cpp
@@ -84,7 +93,7 @@ target_compile_options(kv_grpc PRIVATE -Wall -Wextra -Wpedantic -Werror)
 # gRPC server binary. Constructs an Engine, wraps it in KvStoreServiceImpl,
 # and serves over gRPC on a configurable port.
 add_executable(kv_engine_server src/kv_engine_server_main.cpp)
-target_link_libraries(kv_engine_server PRIVATE kv_engine kv_grpc)
+target_link_libraries(kv_engine_server PRIVATE kv_grpc)
 target_compile_options(kv_engine_server PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 # GoogleTest
@@ -103,6 +112,7 @@ set(KV_TEST_SOURCES
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_integration_test.cpp
+    tests/engine_scan_test.cpp
     tests/engine_test.cpp
     tests/io_utils_test.cpp
     tests/log_file_test.cpp
@@ -131,6 +141,6 @@ gtest_discover_tests(kv_engine_tests)
 option(BENCHMARK "Build the benchmark binary" OFF)
 if(BENCHMARK)
     add_executable(kv_engine_benchmark benchmarks/kv_engine_benchmark.cpp)
-    target_link_libraries(kv_engine_benchmark PRIVATE kv_engine)
+    target_link_libraries(kv_engine_benchmark PRIVATE kv_grpc)
     target_compile_options(kv_engine_benchmark PRIVATE -O3 -DNDEBUG)
 endif()
