@@ -104,6 +104,7 @@ set(KV_TEST_SOURCES
     tests/compaction_test.cpp
     tests/engine_concurrency_test.cpp
     tests/engine_integration_test.cpp
+    tests/engine_scan_test.cpp
     tests/engine_test.cpp
     tests/io_utils_test.cpp
     tests/log_file_test.cpp
