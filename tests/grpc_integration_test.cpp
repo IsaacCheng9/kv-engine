@@ -8,6 +8,7 @@
 #include "grpc_server.hpp"
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 #include <memory>
@@ -194,6 +195,69 @@ TEST(GrpcIntegrationTest, ConcurrentClientWritesArePersisted) {
       EXPECT_EQ(*value, expected);
     }
   }
+}
+
+// Mid-scan cancellation: client closes the stream early via
+// ClientContext::TryCancel. The server-side handler detects this via
+// writer->Write() returning false, returns Status::CANCELLED, and the
+// iterator's destructor closes all SSTable fds. Critically, the server must
+// remain usable for subsequent calls - a wedged thread or leaked fd would
+// manifest as the post-cancel call hanging or failing.
+TEST(GrpcIntegrationTest, ScanCancellationLeavesServerUsable) {
+  auto handle = start_server("scan_cancellation");
+
+  // Populate enough data that the scan won't complete instantly on loopback.
+  // 5000 entries * 200-byte values is ~1 MiB of streaming response - tens of
+  // ms even on a fast machine, giving the cancellation a window to land
+  // mid-stream rather than after the server has already finished.
+  {
+    auto populator = make_client(handle);
+    for (int i = 0; i < 5000; ++i) {
+      populator.put(std::format("key{:05}", i), std::string(200, 'a'));
+    }
+  }
+
+  // Use the raw stub directly: KvStoreClient::scan() always drains, but we
+  // need to cancel mid-stream.
+  auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(handle.port),
+                          grpc::InsecureChannelCredentials());
+  auto stub = kv::v1::KvStoreService::NewStub(channel);
+
+  grpc::ClientContext context;
+  kv::v1::ScanRequest request;
+  auto reader = stub->Scan(&context, request);
+
+  // Read a few entries to confirm the stream is alive, then cancel.
+  kv::v1::ScanResponse response;
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_TRUE(reader->Read(&response));
+  }
+  context.TryCancel();
+
+  // Drain whatever's already in flight - some responses may have been
+  // serialised on the wire before the cancellation reached the server.
+  while (reader->Read(&response)) {
+    // Discard.
+  }
+
+  // CANCELLED if the server detected the cancellation mid-stream; OK if the
+  // scan happened to finish before the cancellation propagated. Both are
+  // clean outcomes - the test cares that neither path throws or wedges.
+  auto status = reader->Finish();
+  EXPECT_TRUE(status.error_code() == grpc::StatusCode::CANCELLED ||
+              status.error_code() == grpc::StatusCode::OK)
+      << "Unexpected status: " << status.error_code() << " "
+      << status.error_message();
+
+  // Critical check: a subsequent call must succeed. A wedged server (e.g.
+  // leaked iterator state, unjoined thread, blocked mutex) would surface
+  // here as a hang or a connection error.
+  auto post = make_client(handle);
+  post.put("post_cancel", "value");
+  auto value = post.get("post_cancel");
+  ASSERT_TRUE(value.has_value());
+  EXPECT_EQ(*value, "value");
 }
 
 } // namespace
