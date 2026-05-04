@@ -1,5 +1,6 @@
 #include "engine.hpp"
 #include "compaction.hpp"
+#include "scan_iterator.hpp"
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
 #include <algorithm>
@@ -307,6 +308,29 @@ void Engine::compaction_loop() {
 
     compact_level_zero();
   }
+}
+
+ScanIterator Engine::scan(std::string start_key, std::string end_key,
+                          uint32_t limit) const {
+  std::map<std::string, std::optional<std::string>> memtable_snap;
+  std::vector<std::string> sstable_paths;
+
+  {
+    std::shared_lock<std::shared_mutex> lock(state_mutex_);
+    memtable_snap = memtable_.snapshot();
+    // Build paths in newest-first order: outer level ascending (level 0 is
+    // newest), inner level reverse (highest ID per level is newest).
+    for (std::size_t level = 0; level < level_files_.size(); ++level) {
+      for (auto it = level_files_[level].rbegin();
+           it != level_files_[level].rend(); ++it) {
+        sstable_paths.push_back(
+            std::format("{}/sstable_{}_{}.dat", data_dir_, level, *it));
+      }
+    }
+  }
+
+  return ScanIterator(std::move(memtable_snap), std::move(sstable_paths),
+                      std::move(start_key), std::move(end_key), limit);
 }
 
 } // namespace kv
