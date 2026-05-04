@@ -156,5 +156,33 @@ TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentWrites) {
   }
 }
 
+TEST_F(EngineConcurrencyTest, ScanIsIsolatedFromConcurrentFlush) {
+  constexpr int initial_keys = 5;
+  // Triggers ~2 flushes, below the 4-file compaction threshold.
+  constexpr int num_writes = 4;
+  // Use a small memtable so that the writer's puts trigger a flush.
+  Engine engine(data_dir.string(), 100);
+  for (int i = 0; i < initial_keys; ++i) {
+    engine.put(std::format("key{:03}", i), std::format("v{}", i));
+  }
+  auto it = engine.scan("", "", 0);
+
+  // Perform puts with the writer thread that overflow the memtable by using
+  // larger values.
+  std::thread writer([&engine]() {
+    for (int i = initial_keys; i < initial_keys + num_writes; ++i) {
+      engine.put(std::format("key{:03}", i), std::string(50, 'x'));
+    }
+  });
+  auto results = drain(std::move(it));
+  writer.join();
+
+  ASSERT_EQ(results.size(), static_cast<std::size_t>(initial_keys));
+  for (int i = 0; i < initial_keys; ++i) {
+    ASSERT_EQ(results[i].first, std::format("key{:03}", i));
+    ASSERT_EQ(results[i].second, std::format("v{}", i));
+  }
+}
+
 } // namespace
 } // namespace kv
