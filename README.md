@@ -2,8 +2,11 @@
 
 [![Test](https://github.com/IsaacCheng9/kv-engine/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/kv-engine/actions/workflows/test.yml)
 
-A crash-safe, concurrent key-value storage engine in C++23 with an LSM-tree
-design.
+A C++23 LSM-tree key-value store with crash recovery and a gRPC API
+supporting point operations and server-streaming range scans.
+
+Implements the LSM-tree design from O'Neil et al. (1996), structurally
+similar to LevelDB and RocksDB.
 
 ## Key Features
 
