@@ -20,22 +20,19 @@ similar to LevelDB and RocksDB.
   with first match winning and tombstone semantics for deletes
 - **Levelled compaction** – background thread merges L0 SSTables into L1 with
   fine-grained locking, so reads and flushes continue during compaction
-- **SSTable reader cache** – parsed readers (index + file descriptor) stay
-  resident for each file's lifetime, and `pread`-based positioned reads make
-  them safe to share across concurrent `get()` callers; eliminates the open +
-  footer + index parse that would otherwise happen on every lookup
-- **Per-SSTable Bloom filter** – probabilistic membership test built during
-  `finalise()` and stored in a new block between the index and footer; on
-  `get()`, the filter is consulted before the binary search to short-circuit
-  keys guaranteed not to be in the file (no false negatives, ~1% false positive
+- **SSTable reader cache** – parsed readers stay resident for each file's
+  lifetime and serve concurrent `get()` callers via positioned reads,
+  eliminating per-lookup open and index-parse cost
+- **Per-SSTable Bloom filter** – probabilistic membership test consulted
+  before the binary search on `get()`, short-circuiting lookups for keys
+  guaranteed not to be in the file (no false negatives, ~1% false positive
   rate)
-- **Key range pruning** – each cached reader's min/max keys are stored at the
-  engine level so `get()` can skip SSTables whose key range cannot contain the
-  lookup key, avoiding the Bloom check and binary search entirely for
-  out-of-range files
-- **gRPC API** – `Put` / `Get` / `Delete` over unary RPCs and `Scan` as
-  server-streaming for range scans; snapshot semantics so concurrent writes,
-  flushes, and compactions don't perturb in-flight scans
+- **Key range pruning** – cached min/max keys let `get()` skip SSTables whose
+  key range cannot contain the lookup key, avoiding the Bloom check and
+  binary search entirely
+- **gRPC API** – `Put` / `Get` / `Delete` as unary RPCs and `Scan` as
+  server-streaming, with snapshot semantics isolating in-flight scans from
+  concurrent writes, flushes, and compactions
 
 ### Planned Features
 
