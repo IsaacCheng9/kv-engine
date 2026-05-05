@@ -154,9 +154,9 @@ kernel TCP loopback. See the `grpc_*` rows in
 
 Streaming RPCs amortise that overhead: `grpc_scan` measures ~8.5 µs per row vs
 ~130 µs per unary call. Server-streaming pays the HTTP/2 framing cost once per
-stream rather than once per row, so the per-operation gRPC tax shrinks ~6x for
-range queries. This is the argument for using server-streaming `Scan` over a
-cursor-based unary API for `Scan`-shaped workloads.
+stream rather than once per row, so the per-operation gRPC tax shrinks ~15x
+for range queries. This is the argument for using server-streaming `Scan` over
+a cursor-based unary API for `Scan`-shaped workloads.
 
 ## Benchmarks
 
