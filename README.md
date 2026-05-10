@@ -46,10 +46,13 @@ flowchart TD
     grpc -->|engine API| engine[Engine]
     engine -->|writes| wal[Write-Ahead Log]
     engine -->|writes / reads| memtable[Memtable<br/>sorted in-memory]
+    engine -->|scan creates| snapshot[Scan Snapshot<br/>memtable copy + SSTable readers]
     memtable -->|flush when full| l0[L0 SSTables<br/>overlapping key ranges]
     l0 -->|background compaction| l1[L1 SSTables<br/>merged, deduplicated]
-    engine -.reads.-> l0
-    engine -.reads.-> l1
+    engine -.point reads.-> l0
+    engine -.point reads.-> l1
+    snapshot -.range reads.-> l0
+    snapshot -.range reads.-> l1
     wal -.replay on startup.-> memtable
 ```
 
