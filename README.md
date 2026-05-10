@@ -161,17 +161,12 @@ the scan don't change what it yields. Tombstones are collapsed and shadowed
 older versions of a key are discarded; the caller sees only the newest live
 value per key in `[start_key, end_key)` order.
 
-### Performance
+### Why Server-Streaming for `Scan`
 
-On loopback (no real network RTT), gRPC adds ~130 µs round-trip vs direct
-in-process engine calls – HTTP/2 framing + protobuf serialise/deserialise +
-kernel TCP loopback. See the `grpc_*` rows in
-`docs/2026_05_05_grpc_with_scan_baseline.txt` for full numbers.
-
-Streaming RPCs amortise that overhead: `grpc_scan` measures ~8.5 µs per row vs
-~130 µs per unary call. Server-streaming pays the HTTP/2 framing cost once per
-stream rather than once per row, so the per-operation gRPC tax shrinks ~15x
-for range queries. This is the argument for using server-streaming `Scan` over
+Streaming RPCs amortise gRPC overhead: `grpc_scan` measures **~8.5 µs per row vs
+~130 µs per unary call.** Server-streaming pays the HTTP/2 framing cost once per
+stream rather than once per row, so the **per-operation gRPC tax shrinks ~15x
+for range queries.** This is the argument for using server-streaming `Scan` over
 a cursor-based unary API for `Scan`-shaped workloads.
 
 ## Benchmarks
