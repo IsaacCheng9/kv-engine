@@ -2,11 +2,11 @@
 
 [![Test](https://github.com/IsaacCheng9/kv-engine/actions/workflows/test.yml/badge.svg)](https://github.com/IsaacCheng9/kv-engine/actions/workflows/test.yml)
 
-A C++23 LSM-tree key-value store with crash recovery and a gRPC API
-supporting point operations and server-streaming range scans.
+A C++23 LSM-tree key-value store with crash recovery and a gRPC API supporting
+point operations and server-streaming range scans.
 
-Modelled after LevelDB and RocksDB, with the LSM-tree design from O'Neil
-et al. (1996).
+Modelled after LevelDB and RocksDB, with the LSM-tree design from O'Neil et al.
+(1996).
 
 ## Key Features
 
@@ -23,13 +23,12 @@ et al. (1996).
 - **SSTable reader cache** – parsed readers stay resident for each file's
   lifetime and serve concurrent `get()` callers via positioned reads,
   eliminating per-lookup open and index-parse cost
-- **Per-SSTable Bloom filter** – probabilistic membership test consulted
-  before the binary search on `get()`, short-circuiting lookups for keys
-  guaranteed not to be in the file (no false negatives, ~1% false positive
-  rate)
+- **Per-SSTable Bloom filter** – probabilistic membership test consulted before
+  the binary search on `get()`, short-circuiting lookups for keys guaranteed not
+  to be in the file (no false negatives, ~1% false positive rate)
 - **Key range pruning** – cached min/max keys let `get()` skip SSTables whose
-  key range cannot contain the lookup key, avoiding the Bloom check and
-  binary search entirely
+  key range cannot contain the lookup key, avoiding the Bloom check and binary
+  search entirely
 - **gRPC API** – `Put` / `Get` / `Delete` as unary RPCs and `Scan` as
   server-streaming, with snapshot semantics isolating in-flight scans from
   concurrent writes, flushes, and compactions
@@ -37,6 +36,20 @@ et al. (1996).
 ### Planned Features
 
 - Raft consensus for distributed replication across multiple nodes
+
+## Performance
+
+Measured on M1 Max in Release build. Full numbers in
+[`docs/2026_05_05_grpc_with_scan_baseline.txt`](docs/2026_05_05_grpc_with_scan_baseline.txt).
+
+| Workload            |     Throughput | Latency (p50) | Notes                                                            |
+| ------------------- | -------------: | ------------: | ---------------------------------------------------------------- |
+| Memtable read       |   2.6M ops/sec |       0.33 µs | Hot in-memory path                                               |
+| SSTable read        |   114k ops/sec |       8.54 µs | Cached reader + Bloom filter + range pruning                     |
+| Negative lookup     |    73k ops/sec |      13.58 µs | All read-path optimisations short-circuit                        |
+| Write (`put`)       |    16k ops/sec |         42 µs | `fsync`-bound on the WAL                                         |
+| gRPC unary read     |   7.3k ops/sec |       ~130 µs | Loopback overhead vs direct in-process call                      |
+| gRPC streaming scan | ~117k rows/sec |   ~8.5 µs/row | ~15x amortisation vs unary (HTTP/2 framing paid once per stream) |
 
 ## Architecture
 
