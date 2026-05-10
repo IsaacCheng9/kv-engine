@@ -17,14 +17,15 @@ public:
   void remove(const std::string &key);
   void clear();
 
-  [[nodiscard]] auto begin() const {
-    std::shared_lock lock(mutex_);
-    return data_.begin();
-  }
-  [[nodiscard]] auto end() const {
-    std::shared_lock lock(mutex_);
-    return data_.end();
-  }
+  // Iteration is NOT internally synchronised. The previous version took a
+  // shared_lock here but released it at function return, leaving the
+  // returned iterator unprotected against concurrent writers - the lock
+  // was guarding nothing. Callers must externally exclude writers for the
+  // iteration's lifetime (e.g. Engine::flush_if_full holds write_mutex_
+  // while iterating to write an SSTable). For callers without an
+  // exclusion guarantee, use snapshot() instead.
+  [[nodiscard]] auto begin() const { return data_.begin(); }
+  [[nodiscard]] auto end() const { return data_.end(); }
   [[nodiscard]] std::size_t size() const {
     std::shared_lock lock(mutex_);
     return data_.size();
