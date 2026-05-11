@@ -1,3 +1,10 @@
 ---
 BasedOnStyle: LLVM
+# Pin AllowShortBlocksOnASingleLine to Always - the LLVM default flipped
+# from Always to Never between clang-format versions, so without the
+# explicit setting CI (older Ubuntu clang-format) and modern local
+# installs would oscillate between collapsing and expanding short braced
+# blocks like `{ WAL wal(path); }` in tests/wal_test.cpp. Pinning to
+# Always matches CI's behaviour and keeps the existing concise style.
+AllowShortBlocksOnASingleLine: Always
 ---
