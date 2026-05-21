@@ -167,8 +167,7 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
 
   auto count_l1 = [&]() {
     std::size_t count = 0;
-    for (const auto &entry :
-         std::filesystem::directory_iterator(temp_dir)) {
+    for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
       auto filename = entry.path().filename().string();
       if (filename.starts_with("sstable_1_") &&
           entry.path().extension() == ".dat") {
