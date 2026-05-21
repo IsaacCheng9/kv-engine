@@ -74,7 +74,11 @@ TEST(CompactionTest, NewSSTableOverridesOlderSSTableForSameKeys) {
   std::remove(output_path.c_str());
 }
 
-TEST(CompactionTest, NewSSTableDeletesKeys) {
+TEST(CompactionTest, NewSSTableTombstonesShadowOlderValues) {
+  // Tombstones in the newer SSTable must be PRESERVED in the merged
+  // output, not dropped. Without this, an older L1 file containing the
+  // pre-delete value would surface the deleted key on read (since the
+  // engine has no L2+ for the tombstone to drain into).
   const std::string older_path = "/tmp/kv_compaction_test_older";
   const std::string newer_path = "/tmp/kv_compaction_test_newer";
   const std::string output_path = "/tmp/kv_compaction_test_output";
@@ -95,8 +99,14 @@ TEST(CompactionTest, NewSSTableDeletesKeys) {
   compact_sstables(older_path, newer_path, output_path);
   EXPECT_TRUE(std::filesystem::exists(output_path));
   auto output_reader = SSTableReader(output_path);
-  EXPECT_EQ(output_reader.get("key1"), std::nullopt);
-  EXPECT_EQ(output_reader.get("key2"), std::nullopt);
+  // Both keys present in the output AS tombstones (outer optional has
+  // value = "key is in this file"; inner optional is nullopt = tombstone).
+  auto result1 = output_reader.get("key1");
+  ASSERT_TRUE(result1.has_value()) << "key1 should be in the output";
+  EXPECT_FALSE(result1->has_value()) << "key1 should be a tombstone";
+  auto result2 = output_reader.get("key2");
+  ASSERT_TRUE(result2.has_value()) << "key2 should be in the output";
+  EXPECT_FALSE(result2->has_value()) << "key2 should be a tombstone";
 
   std::remove(older_path.c_str());
   std::remove(newer_path.c_str());
