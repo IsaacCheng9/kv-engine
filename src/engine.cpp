@@ -224,9 +224,13 @@ void Engine::compact_level_zero() {
   // any shared in-memory state.
   std::string accumulator = l0_paths[0];
   std::vector<std::string> temp_paths;
-  // Track whether the merge chain has produced any live entries. If a step
-  // produces none, skip merging with the empty result and adopt the next L0
-  // file directly - this avoids opening an empty SSTable as a reader.
+  // Track whether the merge chain has produced any entries (live values or
+  // tombstones). If a step produces none, skip merging with the empty
+  // result and adopt the next L0 file directly - this avoids opening an
+  // empty SSTable as a reader. Tombstone-only files DO count as "has
+  // entries" because they're load-bearing: they shadow older L1 files'
+  // values for the same key (compact_sstables preserves tombstones since
+  // L1 is the bottom level in this engine).
   bool accumulator_has_entries = true;
   for (std::size_t i = 1; i < l0_paths.size(); ++i) {
     if (!accumulator_has_entries) {
