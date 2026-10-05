@@ -1,6 +1,6 @@
 #include "io_utils.hpp"
+#include "test_utils.hpp"
 #include <cstddef>
-#include <cstdio>
 #include <fcntl.h>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -14,8 +14,8 @@ namespace kv {
 namespace {
 
 TEST(IOUtilsTest, WriteAllAndReadAllRoundTrip) {
-  const std::string path = "/tmp/kv_io_utils_round_trip";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_round_trip");
 
   const std::string payload = "hello, world";
 
@@ -33,13 +33,12 @@ TEST(IOUtilsTest, WriteAllAndReadAllRoundTrip) {
 
   EXPECT_EQ(bytes_read, payload.size());
   EXPECT_EQ(buf, payload);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, ReadAllReturnsFewerBytesAtEof) {
   // File has 8 bytes; ask for 16, should get 8 back without throwing.
-  const std::string path = "/tmp/kv_io_utils_eof";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_eof");
 
   const std::string payload = "12345678";
 
@@ -55,12 +54,11 @@ TEST(IOUtilsTest, ReadAllReturnsFewerBytesAtEof) {
   close(read_fd);
 
   EXPECT_EQ(bytes_read, payload.size());
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, PReadExactReadsFromOffset) {
-  const std::string path = "/tmp/kv_io_utils_pread_offset";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_pread_offset");
 
   const std::string payload = "abcdefgh";
 
@@ -76,12 +74,11 @@ TEST(IOUtilsTest, PReadExactReadsFromOffset) {
   close(read_fd);
 
   EXPECT_EQ(buf, "cde");
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, PReadExactThrowsOnEof) {
-  const std::string path = "/tmp/kv_io_utils_pread_eof";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_pread_eof");
 
   const std::string payload = "12345678";
 
@@ -96,13 +93,11 @@ TEST(IOUtilsTest, PReadExactThrowsOnEof) {
   EXPECT_THROW(pread_exact(read_fd, buf.data(), buf.size(), 5),
                std::runtime_error);
   close(read_fd);
-
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
-  const std::string path = "/tmp/kv_io_utils_empty";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_empty");
 
   int fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
   ASSERT_NE(fd, -1);
@@ -115,12 +110,11 @@ TEST(IOUtilsTest, ReadAllReturnsZeroOnEmptyFile) {
   close(read_fd);
 
   EXPECT_EQ(bytes_read, 0u);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, WriteAllZeroBytesIsNoOp) {
-  const std::string path = "/tmp/kv_io_utils_write_zero";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_write_zero");
 
   int fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
   ASSERT_NE(fd, -1);
@@ -128,12 +122,11 @@ TEST(IOUtilsTest, WriteAllZeroBytesIsNoOp) {
   close(fd);
 
   EXPECT_EQ(std::filesystem::file_size(path), 0u);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, ReadAllZeroBytesReturnsZero) {
-  const std::string path = "/tmp/kv_io_utils_read_zero";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_read_zero");
 
   int fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
   ASSERT_NE(fd, -1);
@@ -147,24 +140,22 @@ TEST(IOUtilsTest, ReadAllZeroBytesReturnsZero) {
   close(read_fd);
 
   EXPECT_EQ(bytes_read, 0u);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, WriteAllThrowsSystemErrorOnClosedFd) {
-  const std::string path = "/tmp/kv_io_utils_write_closed";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_write_closed");
 
   int fd = open(path.c_str(), O_WRONLY | O_CREAT, 0644);
   ASSERT_NE(fd, -1);
   close(fd);
 
   EXPECT_THROW(write_all(fd, "x", 1), std::system_error);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, ReadAllThrowsSystemErrorOnClosedFd) {
-  const std::string path = "/tmp/kv_io_utils_read_closed";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_read_closed");
 
   int fd = open(path.c_str(), O_RDONLY | O_CREAT, 0644);
   ASSERT_NE(fd, -1);
@@ -173,14 +164,13 @@ TEST(IOUtilsTest, ReadAllThrowsSystemErrorOnClosedFd) {
   char buf[1];
   // Cast to void to satisfy [[nodiscard]] inside the EXPECT_THROW expansion.
   EXPECT_THROW((void)read_all(fd, buf, sizeof(buf)), std::system_error);
-  std::remove(path.c_str());
 }
 
 TEST(IOUtilsTest, WriteAllAndReadAllLargeBuffer) {
   // 64 KiB - exercises the loop path even on systems with large kernel I/O
   // buffers, and verifies the pointer-advance arithmetic across iterations.
-  const std::string path = "/tmp/kv_io_utils_large";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("io_utils_large");
 
   std::vector<char> payload(64 * 1024);
   for (std::size_t i = 0; i < payload.size(); ++i) {
@@ -200,7 +190,6 @@ TEST(IOUtilsTest, WriteAllAndReadAllLargeBuffer) {
 
   EXPECT_EQ(bytes_read, payload.size());
   EXPECT_EQ(buf, payload);
-  std::remove(path.c_str());
 }
 
 } // namespace

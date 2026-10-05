@@ -4,6 +4,7 @@
 // lifetime semantics; these tests cover the persistence and replay surface
 // that those tests don't reach.
 #include "engine.hpp"
+#include "test_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -38,11 +39,8 @@ TEST(EngineIntegrationTest, ReopenAfterFlushPreservesLevelZeroData) {
   // Forces an L0 SSTable flush (via tiny memtable) and verifies the reopened
   // engine reads the same value back via the on-disk SSTable - exercising the
   // startup directory scan + reader hydration path, not WAL replay.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_reopen_l0");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1); // 1-byte memtable forces a flush per put.
@@ -57,19 +55,14 @@ TEST(EngineIntegrationTest, ReopenAfterFlushPreservesLevelZeroData) {
     EXPECT_EQ(reopened.get("key2"), "value2");
     EXPECT_EQ(reopened.get("key3"), "value3");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineIntegrationTest, ReopenAfterCompactionPreservesLevelOneData) {
   // Triggers L0 -> L1 compaction by writing four flushes, waits for the L1 file
   // to appear, then reopens and verifies. Catches regressions where L1 files
   // aren't picked up during the startup directory scan.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_reopen_l1");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1);
@@ -87,19 +80,14 @@ TEST(EngineIntegrationTest, ReopenAfterCompactionPreservesLevelOneData) {
                 "value" + std::to_string(i));
     }
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineIntegrationTest, WALReplayAppliesTombstones) {
   // Existing WALReplay test only covers puts. This adds the remove-then-reopen
   // path, catching a bug class where tombstones in the WAL aren't replayed
   // (which would resurrect deleted keys on engine restart).
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_wal_tombstones");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -113,8 +101,6 @@ TEST(EngineIntegrationTest, WALReplayAppliesTombstones) {
     EXPECT_EQ(reopened.get("present"), "value");
     EXPECT_EQ(reopened.get("doomed"), std::nullopt);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineIntegrationTest, DataSurvivesMultipleReopens) {
@@ -122,11 +108,8 @@ TEST(EngineIntegrationTest, DataSurvivesMultipleReopens) {
   // are present in the final reopen. Catches state-management bugs that only
   // manifest after multiple lifetime transitions (e.g. an SSTable ID counter
   // that resets, causing collisions across reopens).
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_multiple_reopens");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   for (int lifetime = 0; lifetime < 4; ++lifetime) {
     // Create a tiny memtable so that each lifetime flushes.
@@ -140,8 +123,6 @@ TEST(EngineIntegrationTest, DataSurvivesMultipleReopens) {
     EXPECT_EQ(final_engine.get("lifetime" + std::to_string(lifetime)),
               "value" + std::to_string(lifetime));
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
@@ -159,11 +140,8 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
   // is the bottom level in this engine. With no L2+ to drain into, a
   // dropped tombstone permanently fails to shadow older L1 entries for
   // the same key.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_tombstone_l0_l1_compaction");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   auto count_l1 = [&]() {
     std::size_t count = 0;
@@ -211,19 +189,13 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
   // file, get falls through to the older L1 file and returns "ghost".
   // After the fix, the tombstone is preserved and get returns nullopt.
   EXPECT_EQ(engine.get("doomed"), std::nullopt);
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineIntegrationTest, TombstoneInNewerSSTableShadowsLiveValueInOlder) {
   // put -> flush, remove -> flush (tombstone written to a newer SSTable), then
   // reopen and verify the tombstone shadows the older value.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path("kv_engine_integration_tombstone_in_newer_sstable_"
-                            "shadows_live_value_in_older");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Write a key to an SSTable, then remove it and have the tombstone written
   // to a different (newer) SSTable, then get the key.
@@ -236,8 +208,6 @@ TEST(EngineIntegrationTest, TombstoneInNewerSSTableShadowsLiveValueInOlder) {
     Engine reopened_engine(temp_dir);
     EXPECT_EQ(reopened_engine.get("key1"), std::nullopt);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 } // namespace

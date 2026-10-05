@@ -3,6 +3,7 @@
 // compaction-during-scan, mid-scan cancellation) live in
 // engine_concurrency_test.cpp.
 #include "engine.hpp"
+#include "test_utils.hpp"
 #include <filesystem>
 #include <format>
 #include <gtest/gtest.h>
@@ -15,22 +16,8 @@ namespace {
 
 class EngineScanTest : public ::testing::Test {
 protected:
-  std::filesystem::path data_dir;
-
-  void SetUp() override {
-    auto test_name =
-        ::testing::UnitTest::GetInstance()->current_test_info()->name();
-    data_dir =
-        std::filesystem::temp_directory_path() /
-        std::filesystem::path(std::string("kv_engine_scan_") + test_name);
-    std::filesystem::remove_all(data_dir);
-    std::filesystem::create_directories(data_dir);
-  }
-
-  void TearDown() override {
-    std::error_code ec;
-    std::filesystem::remove_all(data_dir, ec);
-  }
+  test::TempDir temp_dir{"kv_engine_scan"};
+  std::filesystem::path data_dir = temp_dir.path();
 
   // Drain a scan into a vector for easy comparison. Moves out of the iterator
   // so the test reads naturally as "what did we see, in order".

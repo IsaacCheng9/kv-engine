@@ -1,4 +1,5 @@
 #include "engine.hpp"
+#include "test_utils.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -17,22 +18,8 @@ namespace {
 
 class EngineConcurrencyTest : public ::testing::Test {
 protected:
-  std::filesystem::path data_dir;
-
-  void SetUp() override {
-    auto test_name =
-        ::testing::UnitTest::GetInstance()->current_test_info()->name();
-    data_dir = std::filesystem::temp_directory_path() /
-               std::filesystem::path(std::string("kv_engine_concurrency_") +
-                                     test_name);
-    std::filesystem::remove_all(data_dir);
-    std::filesystem::create_directories(data_dir);
-  }
-
-  void TearDown() override {
-    std::error_code ec;
-    std::filesystem::remove_all(data_dir, ec);
-  }
+  test::TempDir temp_dir{"kv_engine_concurrency"};
+  std::filesystem::path data_dir = temp_dir.path();
 
   // Drain a scan iterator into a vector. Yields between entries to give
   // concurrent threads a chance to run, exposing races that a single-threaded

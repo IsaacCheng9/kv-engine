@@ -1,4 +1,5 @@
 #include "engine.hpp"
+#include "test_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <gtest/gtest.h>
@@ -31,10 +32,8 @@ bool wait_for_l1_sstable(
 }
 
 TEST(EngineTest, PutAndGet) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_put_get");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -49,15 +48,11 @@ TEST(EngineTest, PutAndGet) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, Remove) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_remove");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -67,15 +62,11 @@ TEST(EngineTest, Remove) {
     auto value1 = engine.get("key1");
     EXPECT_FALSE(value1.has_value());
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, FlushTriggersOnThreshold) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_flush");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Use a small memtable size to trigger flush quickly.
   {
@@ -94,15 +85,11 @@ TEST(EngineTest, FlushTriggersOnThreshold) {
     }
     EXPECT_TRUE(sstable_found);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, WALReplay) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_wal_replay");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -123,17 +110,11 @@ TEST(EngineTest, WALReplay) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetReturnsValueFromSSTableAfterFlush) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_returns_value_from_sstable_after_flush");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Use a small memtable size to trigger flush on first put.
   {
@@ -145,17 +126,11 @@ TEST(EngineTest, GetReturnsValueFromSSTableAfterFlush) {
     EXPECT_TRUE(value1.has_value());
     EXPECT_EQ(value1.value(), "value1");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_newer_sstable_overrides_older_sstable");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -170,17 +145,11 @@ TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_flushing_four_times_triggers_level_compaction");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -212,17 +181,11 @@ TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
     EXPECT_FALSE(l0_files_exist);
     EXPECT_TRUE(l1_file_exists);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_works_across_levels_after_compaction");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -242,17 +205,11 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
     EXPECT_EQ(engine.get("key3"), "value3");
     EXPECT_EQ(engine.get("key4"), "value4");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_repeated_flushes_preserve_newer_level_zero_files");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1);
@@ -270,8 +227,6 @@ TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
                 "value" + std::to_string(i));
     }
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
@@ -282,12 +237,8 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
   // bearing because they shadow same-key values in any older L1 files.
   // The engine can't tell at compaction time whether an older L1 file
   // exists with the same key, so it preserves the tombstones to be safe.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_compaction_with_only_tombstones_publishes_l1");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1);
@@ -309,8 +260,6 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
     Engine reopened_engine(temp_dir, 1);
     EXPECT_EQ(reopened_engine.get("key1"), std::nullopt);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 } // namespace
 } // namespace kv

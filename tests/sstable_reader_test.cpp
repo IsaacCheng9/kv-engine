@@ -1,7 +1,7 @@
 #include "memtable.hpp"
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
-#include <cstdio>
+#include "test_utils.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -12,8 +12,8 @@ namespace kv {
 namespace {
 
 TEST(SSTableReaderTest, ConstructionWithValidPath) {
-  const std::string path = "/tmp/kv_sstable_reader_test";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_reader_test");
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -30,8 +30,6 @@ TEST(SSTableReaderTest, ConstructionWithValidPath) {
   auto value2 = reader.get("key2");
   EXPECT_TRUE(value2.has_value());
   EXPECT_EQ(value2.value(), "value2");
-
-  std::remove(path.c_str());
 }
 
 TEST(SSTableReaderTest, ConstructionWithInvalidPath) {
@@ -40,8 +38,8 @@ TEST(SSTableReaderTest, ConstructionWithInvalidPath) {
 }
 
 TEST(SSTableReaderTest, GetReturnsNulloptForMissingKey) {
-  const std::string path = "/tmp/kv_sstable_reader_test_missing_key";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_reader_test_missing_key");
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -53,13 +51,11 @@ TEST(SSTableReaderTest, GetReturnsNulloptForMissingKey) {
 
   SSTableReader reader(path);
   EXPECT_EQ(reader.get("missing_key"), std::nullopt);
-
-  std::remove(path.c_str());
 }
 
 TEST(SSTableReaderTest, GetReturnsValueForExistingKey) {
-  const std::string path = "/tmp/kv_sstable_reader_test_existing_key";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_reader_test_existing_key");
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -76,13 +72,11 @@ TEST(SSTableReaderTest, GetReturnsValueForExistingKey) {
   EXPECT_EQ(reader.get("key3"), "value3");
   EXPECT_EQ(reader.get("key4"), "value4");
   EXPECT_EQ(reader.get("key5"), std::nullopt);
-
-  std::remove(path.c_str());
 }
 
 TEST(SSTableReaderTest, GetReturnsTombstoneForDeletedKey) {
-  const std::string path = "/tmp/kv_sstable_reader_test_deleted_key";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_reader_test_deleted_key");
   {
     SSTableWriter writer(path);
     Memtable memtable;
@@ -97,8 +91,6 @@ TEST(SSTableReaderTest, GetReturnsTombstoneForDeletedKey) {
   auto result = reader.get("key1");
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().has_value());
-
-  std::remove(path.c_str());
 }
 
 } // namespace

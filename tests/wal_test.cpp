@@ -1,6 +1,6 @@
 #include "memtable.hpp"
+#include "test_utils.hpp"
 #include "wal.hpp"
-#include <cstdio>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -11,11 +11,10 @@ namespace kv {
 namespace {
 
 TEST(WALTest, ConstructionWithValidPath) {
-  const std::string path = "/tmp/kv_wal_test";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_test");
   EXPECT_NO_THROW(WAL wal(path));
   EXPECT_TRUE(std::filesystem::exists(path));
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, ConstructionWithInvalidPath) {
@@ -23,24 +22,22 @@ TEST(WALTest, ConstructionWithInvalidPath) {
 }
 
 TEST(WALTest, LogPutDoesNotThrow) {
-  const std::string path = "/tmp/kv_wal_put";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_put");
   WAL wal(path);
   EXPECT_NO_THROW(wal.log_put("key1", "value1"));
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, LogRemoveDoesNotThrow) {
-  const std::string path = "/tmp/kv_wal_remove";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_remove");
   WAL wal(path);
   EXPECT_NO_THROW(wal.log_remove("key1"));
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, FileGrowsAfterWrites) {
-  const std::string path = "/tmp/kv_wal_grow";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_grow");
   WAL wal(path);
   auto size_before = std::filesystem::file_size(path);
   wal.log_put("key1", "value1");
@@ -50,13 +47,11 @@ TEST(WALTest, FileGrowsAfterWrites) {
   wal.log_remove("key2");
   auto size_after_remove = std::filesystem::file_size(path);
   EXPECT_GT(size_after_remove, size_after_put);
-
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, ReplayGeneratesCorrectMemtable) {
-  const std::string path = "/tmp/kv_wal_replay";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_replay");
   {
     WAL wal(path);
     wal.log_put("key1", "value1");
@@ -74,13 +69,11 @@ TEST(WALTest, ReplayGeneratesCorrectMemtable) {
   auto value2 = memtable.get("key2");
   ASSERT_TRUE(value2.has_value());
   EXPECT_EQ(value2.value(), "value2");
-
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, ReplayOnEmptyFile) {
-  const std::string path = "/tmp/kv_wal_empty_replay";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_empty_replay");
   { WAL wal(path); }
 
   Memtable memtable;
@@ -90,13 +83,11 @@ TEST(WALTest, ReplayOnEmptyFile) {
   }
 
   EXPECT_TRUE(memtable.get("anykey").has_value() == false);
-
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, ReplayWithCorruptedRecord) {
-  const std::string path = "/tmp/kv_wal_corrupted_replay";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_corrupted_replay");
   {
     WAL wal(path);
     wal.log_put("key1", "value1");
@@ -124,19 +115,16 @@ TEST(WALTest, ReplayWithCorruptedRecord) {
   auto value2 = memtable.get("key2");
   ASSERT_TRUE(value2.has_value());
   EXPECT_EQ(value2.value(), "value2");
-
-  std::remove(path.c_str());
 }
 
 TEST(WALTest, ClearTruncatesFile) {
-  const std::string path = "/tmp/kv_wal_clear";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("wal_clear");
   WAL wal(path);
   wal.log_put("key1", "value1");
   EXPECT_GT(std::filesystem::file_size(path), 0);
   wal.clear();
   EXPECT_EQ(std::filesystem::file_size(path), 0);
-  std::remove(path.c_str());
 }
 } // namespace
 } // namespace kv
