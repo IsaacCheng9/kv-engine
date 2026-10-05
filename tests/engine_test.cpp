@@ -1,35 +1,12 @@
 #include "engine.hpp"
 #include "test_utils.hpp"
-#include <chrono>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <string>
-#include <thread>
 
 namespace kv {
 
 namespace {
-
-// Polls for an L1 SSTable file in `dir`, returning true if one appears before
-// the deadline. Used to synchronise with the background compaction thread -
-// fixed sleeps are flaky because compaction latency varies with sanitiser
-// instrumentation (TSan is 5-10x slower than ASan) and CI runner load.
-bool wait_for_l1_sstable(
-    const std::string &dir,
-    std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        return true;
-      }
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return false;
-}
 
 TEST(EngineTest, PutAndGet) {
   const test::TempDir dir;
@@ -159,27 +136,11 @@ TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
     engine.put("key3", "value3");
     engine.put("key4", "value4");
 
-    // Wait for background compaction to finish before scanning.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
-
-    // After four flushes, we should have triggered compaction of level zero
-    // into level one. Check that the L0 files are gone and the L1 file exists.
-    bool l0_files_exist = false;
-    bool l1_file_exists = false;
-    for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_0_") &&
-          entry.path().extension() == ".dat") {
-        l0_files_exist = true;
-      }
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        l1_file_exists = true;
-      }
-    }
-    EXPECT_FALSE(l0_files_exist);
-    EXPECT_TRUE(l1_file_exists);
+    // After four flushes, compaction should retire every L0 file into a
+    // single L1 file.
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not retire the L0 files within the timeout";
+    EXPECT_EQ(test::count_sstables(temp_dir, 1), 1u);
   }
 }
 
@@ -195,9 +156,8 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
     engine.put("key3", "value3");
     engine.put("key4", "value4");
 
-    // Wait for background compaction to finish before scanning.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not complete within the timeout";
 
     // After compaction, all keys should still be retrievable.
     EXPECT_EQ(engine.get("key1"), "value1");
@@ -218,9 +178,12 @@ TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
     }
 
     // Let the background thread run at least one compaction so the test
-    // exercises the post-compaction state.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    // exercises the post-compaction state. Level 0 need not drain completely
+    // after 32 flushes, so wait for the first L1 file rather than for
+    // wait_for_compaction(); reads stay correct mid-compaction either way.
+    ASSERT_TRUE(test::wait_until([&] {
+      return test::count_sstables(temp_dir, 1) > 0;
+    })) << "Compaction did not produce an L1 file within the timeout";
 
     for (int i = 0; i < 32; ++i) {
       EXPECT_EQ(engine.get("key" + std::to_string(i)),
@@ -247,8 +210,8 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
     engine.remove("key1");
     engine.remove("key1");
 
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not complete within the timeout";
     // The L1 file contains a tombstone for key1; the engine reads through
     // it correctly and returns nullopt.
     EXPECT_EQ(engine.get("key1"), std::nullopt);

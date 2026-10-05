@@ -5,35 +5,12 @@
 // that those tests don't reach.
 #include "engine.hpp"
 #include "test_utils.hpp"
-#include <chrono>
-#include <filesystem>
 #include <gtest/gtest.h>
 #include <string>
-#include <thread>
 
 namespace kv {
 
 namespace {
-
-// Polls for an L1 SSTable file in `dir`, returning true if one appears before
-// the deadline. Mirrors the helper in engine_test.cpp; duplicated here rather
-// than extracted to a shared header to keep test files self-contained.
-bool wait_for_l1_sstable(
-    const std::string &dir,
-    std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        return true;
-      }
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return false;
-}
 
 TEST(EngineIntegrationTest, ReopenAfterFlushPreservesLevelZeroData) {
   // Forces an L0 SSTable flush (via tiny memtable) and verifies the reopened
@@ -69,8 +46,8 @@ TEST(EngineIntegrationTest, ReopenAfterCompactionPreservesLevelOneData) {
     for (int i = 0; i < 4; ++i) {
       engine.put("key" + std::to_string(i), "value" + std::to_string(i));
     }
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not complete within the timeout";
   }
 
   {
@@ -143,18 +120,6 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
   const test::TempDir dir;
   const std::string temp_dir = dir.path().string();
 
-  auto count_l1 = [&]() {
-    std::size_t count = 0;
-    for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        ++count;
-      }
-    }
-    return count;
-  };
-
   Engine engine(temp_dir, 1); // Tiny memtable so every put flushes to L0.
 
   // Phase 1: write doomed=ghost, fill L0 to 4 files, wait for the first
@@ -163,10 +128,10 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
   engine.put("a", "1");
   engine.put("b", "2");
   engine.put("c", "3");
-  ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-      << "First L0->L1 compaction did not produce an L1 file";
+  ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+      << "First L0->L1 compaction did not complete";
   ASSERT_EQ(engine.get("doomed"), "ghost");
-  const std::size_t l1_count_after_phase1 = count_l1();
+  const std::size_t l1_count_after_phase1 = test::count_sstables(temp_dir, 1);
 
   // Phase 2: remove doomed, fill L0 again, wait for the second L0->L1
   // compaction. The tombstone is in one of the merged L0 files. With the
@@ -176,14 +141,11 @@ TEST(EngineIntegrationTest, TombstoneSurvivesL0ToL1Compaction) {
   engine.put("e", "5");
   engine.put("f", "6");
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while (count_l1() <= l1_count_after_phase1 &&
-         std::chrono::steady_clock::now() < deadline) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  ASSERT_GT(count_l1(), l1_count_after_phase1)
-      << "Second L0->L1 compaction did not produce an additional L1 file";
+  // Wait for the whole compaction, not just the new L1 file. Until the L0
+  // inputs are retired, reads still find the tombstone in L0 and the test
+  // would pass even with the bug.
+  ASSERT_TRUE(test::wait_for_compaction(temp_dir, l1_count_after_phase1 + 1))
+      << "Second L0->L1 compaction did not complete";
 
   // The bug surfaces here: with the tombstone dropped from the newer L1
   // file, get falls through to the older L1 file and returns "ghost".
