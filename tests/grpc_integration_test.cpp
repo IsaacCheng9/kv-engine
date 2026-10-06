@@ -6,6 +6,7 @@
 #include "engine.hpp"
 #include "grpc_client.hpp"
 #include "grpc_server.hpp"
+#include "test_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -22,13 +23,18 @@ namespace kv {
 namespace {
 
 struct ServerHandle {
+  // Declared first so it is destroyed last, after the engine releases its
+  // files.
+  test::TempDir temp_dir;
   std::filesystem::path data_dir;
   std::unique_ptr<Engine> engine;
   std::unique_ptr<KvStoreServiceImpl> service;
   std::unique_ptr<grpc::Server> server;
   int port = 0;
 
-  ServerHandle() = default;
+  explicit ServerHandle(const std::string &test_name)
+      : temp_dir("kv_grpc_integration_" + test_name),
+        data_dir(temp_dir.path()) {}
   ServerHandle(ServerHandle &&) = default;
   ServerHandle &operator=(ServerHandle &&) = default;
   ServerHandle(const ServerHandle &) = delete;
@@ -42,19 +48,11 @@ struct ServerHandle {
     server.reset();
     service.reset();
     engine.reset();
-    if (!data_dir.empty()) {
-      std::error_code ec;
-      std::filesystem::remove_all(data_dir, ec);
-    }
   }
 };
 
 ServerHandle start_server(const std::string &test_name) {
-  ServerHandle handle;
-  handle.data_dir = std::filesystem::temp_directory_path() /
-                    std::filesystem::path("kv_grpc_integration_" + test_name);
-  std::filesystem::remove_all(handle.data_dir);
-  std::filesystem::create_directories(handle.data_dir);
+  ServerHandle handle(test_name);
 
   handle.engine = std::make_unique<Engine>(handle.data_dir.string());
   handle.service = std::make_unique<KvStoreServiceImpl>(handle.engine.get());

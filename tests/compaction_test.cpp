@@ -1,7 +1,7 @@
 #include "compaction.hpp"
 #include "sstable_reader.hpp"
 #include "sstable_writer.hpp"
-#include <cstdio>
+#include "test_utils.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <optional>
@@ -13,12 +13,10 @@ namespace kv {
 namespace {
 
 TEST(CompactionTest, NewSSTableAddsNewKeys) {
-  const std::string older_path = "/tmp/kv_compaction_test_older";
-  const std::string newer_path = "/tmp/kv_compaction_test_newer";
-  const std::string output_path = "/tmp/kv_compaction_test_output";
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
+  const test::TempDir dir;
+  const std::string older_path = dir.file("older");
+  const std::string newer_path = dir.file("newer");
+  const std::string output_path = dir.file("output");
   {
     SSTableWriter older_writer(older_path);
     SSTableWriter newer_writer(newer_path);
@@ -38,19 +36,13 @@ TEST(CompactionTest, NewSSTableAddsNewKeys) {
   EXPECT_EQ(output_reader.get("key2"), "value2");
   EXPECT_EQ(output_reader.get("key3"), "value3");
   EXPECT_EQ(output_reader.get("key4"), "value4");
-
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
 }
 
 TEST(CompactionTest, NewSSTableOverridesOlderSSTableForSameKeys) {
-  const std::string older_path = "/tmp/kv_compaction_test_older";
-  const std::string newer_path = "/tmp/kv_compaction_test_newer";
-  const std::string output_path = "/tmp/kv_compaction_test_output";
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
+  const test::TempDir dir;
+  const std::string older_path = dir.file("older");
+  const std::string newer_path = dir.file("newer");
+  const std::string output_path = dir.file("output");
   {
     SSTableWriter older_writer(older_path);
     SSTableWriter newer_writer(newer_path);
@@ -68,10 +60,6 @@ TEST(CompactionTest, NewSSTableOverridesOlderSSTableForSameKeys) {
   // The newer values from the newer SSTable should be present.
   EXPECT_EQ(output_reader.get("key1"), "value3");
   EXPECT_EQ(output_reader.get("key2"), "value4");
-
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
 }
 
 TEST(CompactionTest, NewSSTableTombstonesShadowOlderValues) {
@@ -79,12 +67,10 @@ TEST(CompactionTest, NewSSTableTombstonesShadowOlderValues) {
   // output, not dropped. Without this, an older L1 file containing the
   // pre-delete value would surface the deleted key on read (since the
   // engine has no L2+ for the tombstone to drain into).
-  const std::string older_path = "/tmp/kv_compaction_test_older";
-  const std::string newer_path = "/tmp/kv_compaction_test_newer";
-  const std::string output_path = "/tmp/kv_compaction_test_output";
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
+  const test::TempDir dir;
+  const std::string older_path = dir.file("older");
+  const std::string newer_path = dir.file("newer");
+  const std::string output_path = dir.file("output");
   {
     SSTableWriter older_writer(older_path);
     SSTableWriter newer_writer(newer_path);
@@ -107,19 +93,13 @@ TEST(CompactionTest, NewSSTableTombstonesShadowOlderValues) {
   auto result2 = output_reader.get("key2");
   ASSERT_TRUE(result2.has_value()) << "key2 should be in the output";
   EXPECT_FALSE(result2->has_value()) << "key2 should be a tombstone";
-
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
 }
 
 TEST(CompactionTest, DifferentKeyRangesWithInterleavingKeysIsOrdered) {
-  const std::string older_path = "/tmp/kv_compaction_test_older";
-  const std::string newer_path = "/tmp/kv_compaction_test_newer";
-  const std::string output_path = "/tmp/kv_compaction_test_output";
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
+  const test::TempDir dir;
+  const std::string older_path = dir.file("older");
+  const std::string newer_path = dir.file("newer");
+  const std::string output_path = dir.file("output");
   {
     SSTableWriter older_writer(older_path);
     SSTableWriter newer_writer(newer_path);
@@ -149,10 +129,6 @@ TEST(CompactionTest, DifferentKeyRangesWithInterleavingKeysIsOrdered) {
   std::vector<std::string> expected{"key1", "key2", "key3",
                                     "key4", "key5", "key6"};
   EXPECT_EQ(keys, expected);
-
-  std::remove(older_path.c_str());
-  std::remove(newer_path.c_str());
-  std::remove(output_path.c_str());
 }
 } // namespace
 } // namespace kv

@@ -1,21 +1,25 @@
 name: Format
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Run clang-format
-        run:
-          find src tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
-
-      - name: Commit changes made by clang-format
-        uses: stefanzweifel/git-auto-commit-action@master
-        with:
-          commit_message: "style: Format C++ code with clang-format"
+      # Check only - never push commits to contributor branches. Format locally
+      # with `clang-format -i` before pushing.
+      - name: Check formatting with clang-format
+        run: |
+          clang-format --version
+          find src tests -name '*.cpp' -o -name '*.hpp' |
+            xargs clang-format --dry-run --Werror

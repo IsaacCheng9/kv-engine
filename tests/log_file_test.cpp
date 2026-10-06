@@ -1,5 +1,5 @@
 #include "log_file.hpp"
-#include <cstdio>
+#include "test_utils.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -11,11 +11,10 @@ namespace kv {
 namespace {
 
 TEST(LogFileTest, ConstructionWithValidPath) {
-  const std::string path = "/tmp/kv_log_file_test";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("log_file_test");
   EXPECT_NO_THROW(LogFile log_file(path));
   EXPECT_TRUE(std::filesystem::exists(path));
-  std::remove(path.c_str());
 }
 
 TEST(LogFileTest, ConstructionWithInvalidPath) {
@@ -24,8 +23,8 @@ TEST(LogFileTest, ConstructionWithInvalidPath) {
 }
 
 TEST(LogFileTest, AppendedEntriesAreReadBack) {
-  const std::string path = "/tmp/kv_log_file";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("log_file");
   LogFile log_file(path);
   EXPECT_NO_THROW(log_file.append("entry1"));
   EXPECT_NO_THROW(log_file.append("entry2"));
@@ -34,16 +33,14 @@ TEST(LogFileTest, AppendedEntriesAreReadBack) {
   std::vector<std::string> actual_entries = log_file.read_entries();
   std::vector<std::string> expected_entries{"entry1", "entry2", "entry3"};
   EXPECT_EQ(actual_entries, expected_entries);
-  std::remove(path.c_str());
 }
 
 TEST(LogFileTest, ReadsEmptyVectorForEmptyLogs) {
-  const std::string path = "/tmp/kv_log_file_empty";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("log_file_empty");
   LogFile log_file(path);
   std::vector<std::string> actual_entries = log_file.read_entries();
   EXPECT_TRUE(actual_entries.empty());
-  std::remove(path.c_str());
 }
 } // namespace
 } // namespace kv

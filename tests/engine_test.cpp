@@ -1,40 +1,16 @@
 #include "engine.hpp"
-#include <chrono>
+#include "test_utils.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <string>
-#include <thread>
 
 namespace kv {
 
 namespace {
 
-// Polls for an L1 SSTable file in `dir`, returning true if one appears before
-// the deadline. Used to synchronise with the background compaction thread -
-// fixed sleeps are flaky because compaction latency varies with sanitiser
-// instrumentation (TSan is 5-10x slower than ASan) and CI runner load.
-bool wait_for_l1_sstable(
-    const std::string &dir,
-    std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    for (const auto &entry : std::filesystem::directory_iterator(dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        return true;
-      }
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return false;
-}
-
 TEST(EngineTest, PutAndGet) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_put_get");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -49,15 +25,11 @@ TEST(EngineTest, PutAndGet) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, Remove) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_remove");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -67,15 +39,11 @@ TEST(EngineTest, Remove) {
     auto value1 = engine.get("key1");
     EXPECT_FALSE(value1.has_value());
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, FlushTriggersOnThreshold) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_flush");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Use a small memtable size to trigger flush quickly.
   {
@@ -94,15 +62,11 @@ TEST(EngineTest, FlushTriggersOnThreshold) {
     }
     EXPECT_TRUE(sstable_found);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, WALReplay) {
-  std::string temp_dir = std::filesystem::temp_directory_path() /
-                         std::filesystem::path("kv_engine_test_wal_replay");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir);
@@ -123,17 +87,11 @@ TEST(EngineTest, WALReplay) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetReturnsValueFromSSTableAfterFlush) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_returns_value_from_sstable_after_flush");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Use a small memtable size to trigger flush on first put.
   {
@@ -145,17 +103,11 @@ TEST(EngineTest, GetReturnsValueFromSSTableAfterFlush) {
     EXPECT_TRUE(value1.has_value());
     EXPECT_EQ(value1.value(), "value1");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_newer_sstable_overrides_older_sstable");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -170,17 +122,11 @@ TEST(EngineTest, GetNewerSSTableOverridesOlderSSTableForSameKey) {
     EXPECT_TRUE(value2.has_value());
     EXPECT_EQ(value2.value(), "value2");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_flushing_four_times_triggers_level_compaction");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -190,39 +136,17 @@ TEST(EngineTest, FlushingFourTimesTriggersLevelCompaction) {
     engine.put("key3", "value3");
     engine.put("key4", "value4");
 
-    // Wait for background compaction to finish before scanning.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
-
-    // After four flushes, we should have triggered compaction of level zero
-    // into level one. Check that the L0 files are gone and the L1 file exists.
-    bool l0_files_exist = false;
-    bool l1_file_exists = false;
-    for (const auto &entry : std::filesystem::directory_iterator(temp_dir)) {
-      auto filename = entry.path().filename().string();
-      if (filename.starts_with("sstable_0_") &&
-          entry.path().extension() == ".dat") {
-        l0_files_exist = true;
-      }
-      if (filename.starts_with("sstable_1_") &&
-          entry.path().extension() == ".dat") {
-        l1_file_exists = true;
-      }
-    }
-    EXPECT_FALSE(l0_files_exist);
-    EXPECT_TRUE(l1_file_exists);
+    // After four flushes, compaction should retire every L0 file into a
+    // single L1 file.
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not retire the L0 files within the timeout";
+    EXPECT_EQ(test::count_sstables(temp_dir, 1), 1u);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_get_works_across_levels_after_compaction");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   // Small memtable size to trigger flush on each put.
   {
@@ -232,9 +156,8 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
     engine.put("key3", "value3");
     engine.put("key4", "value4");
 
-    // Wait for background compaction to finish before scanning.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not complete within the timeout";
 
     // After compaction, all keys should still be retrievable.
     EXPECT_EQ(engine.get("key1"), "value1");
@@ -242,17 +165,11 @@ TEST(EngineTest, GetWorksAcrossLevelsAfterCompaction) {
     EXPECT_EQ(engine.get("key3"), "value3");
     EXPECT_EQ(engine.get("key4"), "value4");
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_repeated_flushes_preserve_newer_level_zero_files");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1);
@@ -261,17 +178,18 @@ TEST(EngineTest, RepeatedFlushesDoNotLoseNewerLevelZeroFiles) {
     }
 
     // Let the background thread run at least one compaction so the test
-    // exercises the post-compaction state.
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    // exercises the post-compaction state. Level 0 need not drain completely
+    // after 32 flushes, so wait for the first L1 file rather than for
+    // wait_for_compaction(); reads stay correct mid-compaction either way.
+    ASSERT_TRUE(test::wait_until([&] {
+      return test::count_sstables(temp_dir, 1) > 0;
+    })) << "Compaction did not produce an L1 file within the timeout";
 
     for (int i = 0; i < 32; ++i) {
       EXPECT_EQ(engine.get("key" + std::to_string(i)),
                 "value" + std::to_string(i));
     }
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 
 TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
@@ -282,12 +200,8 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
   // bearing because they shadow same-key values in any older L1 files.
   // The engine can't tell at compaction time whether an older L1 file
   // exists with the same key, so it preserves the tombstones to be safe.
-  std::string temp_dir =
-      std::filesystem::temp_directory_path() /
-      std::filesystem::path(
-          "kv_engine_test_compaction_with_only_tombstones_publishes_l1");
-  std::filesystem::remove_all(temp_dir);
-  std::filesystem::create_directories(temp_dir);
+  const test::TempDir dir;
+  const std::string temp_dir = dir.path().string();
 
   {
     Engine engine(temp_dir, 1);
@@ -296,8 +210,8 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
     engine.remove("key1");
     engine.remove("key1");
 
-    ASSERT_TRUE(wait_for_l1_sstable(temp_dir))
-        << "Compaction did not produce an L1 file within the timeout";
+    ASSERT_TRUE(test::wait_for_compaction(temp_dir))
+        << "Compaction did not complete within the timeout";
     // The L1 file contains a tombstone for key1; the engine reads through
     // it correctly and returns nullopt.
     EXPECT_EQ(engine.get("key1"), std::nullopt);
@@ -309,8 +223,6 @@ TEST(EngineTest, CompactionWithOnlyTombstonesPublishesL1File) {
     Engine reopened_engine(temp_dir, 1);
     EXPECT_EQ(reopened_engine.get("key1"), std::nullopt);
   }
-
-  std::filesystem::remove_all(temp_dir);
 }
 } // namespace
 } // namespace kv

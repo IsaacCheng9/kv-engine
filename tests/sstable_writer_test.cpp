@@ -1,6 +1,6 @@
 #include "memtable.hpp"
 #include "sstable_writer.hpp"
-#include <cstdio>
+#include "test_utils.hpp"
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <stdexcept>
@@ -11,11 +11,10 @@ namespace kv {
 namespace {
 
 TEST(SSTableWriterTest, ConstructionWithValidPath) {
-  const std::string path = "/tmp/kv_log_file_test";
-  std::remove(path.c_str());
+  const test::TempDir dir;
+  const std::string path = dir.file("log_file_test");
   EXPECT_NO_THROW(SSTableWriter writer(path));
   EXPECT_TRUE(std::filesystem::exists(path));
-  std::remove(path.c_str());
 }
 
 TEST(SSTableWriterTest, ConstructionWithInvalidPath) {
@@ -24,8 +23,8 @@ TEST(SSTableWriterTest, ConstructionWithInvalidPath) {
 }
 
 TEST(SSTableWriterTest, WriteMemtableWithoutTombstone) {
-  const std::string path = "/tmp/kv_sstable_writer_test";
-  std::remove(path.c_str()); // Clean up from previous runs in case of crash.
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_writer_test");
   SSTableWriter writer(path);
   Memtable memtable;
   memtable.put("key1", "value1");
@@ -34,13 +33,11 @@ TEST(SSTableWriterTest, WriteMemtableWithoutTombstone) {
   EXPECT_NO_THROW(writer.write_memtable(memtable));
   auto file_size = std::filesystem::file_size(path);
   EXPECT_GT(file_size, 0);
-
-  std::remove(path.c_str());
 }
 
 TEST(SSTableWriterTest, WriteMemtableWithTombstone) {
-  const std::string path = "/tmp/kv_sstable_writer_tombstone_test";
-  std::remove(path.c_str()); // Clean up from previous runs in case of crash.
+  const test::TempDir dir;
+  const std::string path = dir.file("sstable_writer_tombstone_test");
   SSTableWriter writer(path);
   Memtable memtable;
   memtable.put("key1", "value1");
@@ -49,8 +46,6 @@ TEST(SSTableWriterTest, WriteMemtableWithTombstone) {
   EXPECT_NO_THROW(writer.write_memtable(memtable));
   auto file_size = std::filesystem::file_size(path);
   EXPECT_GT(file_size, 0);
-
-  std::remove(path.c_str());
 }
 } // namespace
 } // namespace kv
