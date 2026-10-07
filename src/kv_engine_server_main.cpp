@@ -25,10 +25,22 @@ int run_server(const kv::ServerArgs &args) {
   kv::KvStoreServiceImpl service(&engine);
 
   grpc::ServerBuilder builder;
+  // gRPC enables SO_REUSEPORT by default, which lets a second server bind the
+  // same port and silently take a share of the connections - against a
+  // different data directory. Disable it so a port clash fails at startup.
+  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  int selected_port = 0;
   builder.AddListeningPort("localhost:" + std::to_string(args.port),
-                           grpc::InsecureServerCredentials());
+                           grpc::InsecureServerCredentials(), &selected_port);
   builder.RegisterService(&service);
   std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  // BuildAndStart() returns null, or leaves the selected port at 0, when the
+  // address cannot be bound - typically because the port is already in use.
+  if (server == nullptr || selected_port == 0) {
+    std::println(stderr, "Failed to listen on port {} - is it already in use?",
+                 args.port);
+    return 1;
+  }
 
   // Signal handlers can only call async-signal-safe functions, which excludes
   // server->Shutdown() (it allocates, takes locks, does I/O). So the handler
