@@ -126,8 +126,10 @@ Schema lives in `proto/kv/v1/kv.proto`.
 ```
 
 The server creates `--data-dir` if it doesn't exist and serves on
-`localhost:port`. `SIGINT` and `SIGTERM` trigger a graceful shutdown with a
-5-second deadline for in-flight RPCs.
+`localhost:port`, where the port must be 1–65535. It exits with an error if the
+port is already in use rather than sharing it with another server. `SIGINT` and
+`SIGTERM` trigger a graceful shutdown with a 5-second deadline for in-flight
+RPCs.
 
 ### Client Usage
 
