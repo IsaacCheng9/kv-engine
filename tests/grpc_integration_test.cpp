@@ -7,15 +7,21 @@
 #include "grpc_client.hpp"
 #include "grpc_server.hpp"
 #include "test_utils.hpp"
+#include <arpa/inet.h>
+#include <cerrno>
 #include <chrono>
 #include <filesystem>
 #include <format>
 #include <grpcpp/grpcpp.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <netinet/in.h>
 #include <stdexcept>
 #include <string>
+#include <sys/socket.h>
+#include <system_error>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace kv {
@@ -67,6 +73,55 @@ ServerHandle start_server(const std::string &test_name) {
 
 KvStoreClient make_client(const ServerHandle &handle) {
   return KvStoreClient("localhost:" + std::to_string(handle.port));
+}
+
+// Listens on a loopback TCP port without ever accepting or speaking HTTP/2.
+// The kernel completes the TCP handshake from the listen backlog, so a client
+// connects and then waits indefinitely for the server's reply.
+class SilentListener {
+public:
+  SilentListener() {
+    fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd_ == -1) {
+      throw std::system_error(errno, std::generic_category(), "socket failed");
+    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socklen_t addr_len = sizeof(addr);
+    if (bind(fd_, reinterpret_cast<sockaddr *>(&addr), addr_len) == -1 ||
+        listen(fd_, 16) == -1 ||
+        getsockname(fd_, reinterpret_cast<sockaddr *>(&addr), &addr_len) ==
+            -1) {
+      const int saved_errno = errno;
+      close(fd_);
+      throw std::system_error(saved_errno, std::generic_category(),
+                              "failed to set up listener");
+    }
+    port_ = ntohs(addr.sin_port);
+  }
+
+  ~SilentListener() { close(fd_); }
+
+  SilentListener(const SilentListener &) = delete;
+  SilentListener &operator=(const SilentListener &) = delete;
+
+  [[nodiscard]] std::string target() const {
+    return "127.0.0.1:" + std::to_string(port_);
+  }
+
+private:
+  int fd_;
+  int port_;
+};
+
+// Run `rpc` and return the status code of the KvStoreError it throws.
+template <typename Rpc> grpc::StatusCode rpc_error_code(Rpc rpc) {
+  try {
+    rpc();
+  } catch (const KvStoreError &e) { return e.code(); }
+  ADD_FAILURE() << "Expected the RPC to throw KvStoreError";
+  return grpc::StatusCode::OK;
 }
 
 TEST(GrpcIntegrationTest, PutThenGetReturnsValue) {
@@ -273,6 +328,38 @@ TEST(GrpcIntegrationTest, ScanCancellationLeavesServerUsable) {
   auto value = post.get("post_cancel");
   ASSERT_TRUE(value.has_value());
   EXPECT_EQ(*value, "value");
+}
+
+TEST(GrpcIntegrationTest, UnreachableServerFailsWithUnavailable) {
+  // Take a free port and release it, so nothing is listening there.
+  std::string target;
+  {
+    const SilentListener listener;
+    target = listener.target();
+  }
+  KvStoreClient client(target);
+
+  EXPECT_EQ(rpc_error_code([&] { client.put("key", "value"); }),
+            grpc::StatusCode::UNAVAILABLE);
+}
+
+TEST(GrpcIntegrationTest, UnresponsiveServerFailsWithDeadlineExceeded) {
+  const SilentListener listener;
+  KvStoreClient client(listener.target(), std::chrono::milliseconds(200));
+
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_EQ(rpc_error_code([&] { (void)client.get("key"); }),
+            grpc::StatusCode::DEADLINE_EXCEEDED);
+  // Well under the 5-second default, so the configured deadline applied.
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(3));
+}
+
+TEST(GrpcIntegrationTest, UnresponsiveServerFailsStreamingScanWithDeadline) {
+  const SilentListener listener;
+  KvStoreClient client(listener.target(), std::chrono::milliseconds(200));
+
+  EXPECT_EQ(rpc_error_code([&] { (void)client.scan("", "", 0); }),
+            grpc::StatusCode::DEADLINE_EXCEEDED);
 }
 
 } // namespace

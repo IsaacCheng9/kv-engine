@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(kv_engine VERSION 0.17.7 LANGUAGES CXX)
+project(kv_engine VERSION 0.18.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -84,7 +84,7 @@ target_compile_options(kv_engine PRIVATE -Wall -Wextra -Wpedantic -Werror)
 # gRPC server + client library. Kept separate from kv_engine so the engine
 # itself doesn't depend on gRPC; the server binary and any client consumer
 # (tests, future CLI tools) link this.
-add_library(kv_grpc src/grpc_server.cpp src/grpc_client.cpp)
+add_library(kv_grpc src/grpc_server.cpp src/grpc_client.cpp src/server_args.cpp)
 target_include_directories(kv_grpc PUBLIC src)
 target_link_libraries(kv_grpc PUBLIC kv_engine kv_proto)
 target_compile_options(kv_grpc PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -115,6 +115,7 @@ set(KV_TEST_SOURCES
     tests/engine_test.cpp
     tests/io_utils_test.cpp
     tests/memtable_test.cpp
+    tests/server_args_test.cpp
     tests/sstable_reader_test.cpp
     tests/sstable_writer_test.cpp
     tests/wal_test.cpp
@@ -134,6 +135,17 @@ target_compile_options(kv_engine_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 include(GoogleTest)
 gtest_discover_tests(kv_engine_tests)
+
+# Entry-point error paths. Match the server's own message rather than the exit
+# code, so a crash on bad input (which also exits non-zero) still fails.
+add_test(NAME ServerRejectsNonNumericPort
+         COMMAND kv_engine_server --data-dir unused --port abc)
+set_tests_properties(ServerRejectsNonNumericPort PROPERTIES
+                     PASS_REGULAR_EXPRESSION "Invalid port 'abc'")
+add_test(NAME ServerReportsUnusableDataDir
+         COMMAND kv_engine_server --data-dir /dev/null/data)
+set_tests_properties(ServerReportsUnusableDataDir PROPERTIES
+                     PASS_REGULAR_EXPRESSION "failed to start")
 
 # Benchmark (enable with -DBENCHMARK=ON)
 option(BENCHMARK "Build the benchmark binary" OFF)

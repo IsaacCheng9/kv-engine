@@ -126,8 +126,10 @@ Schema lives in `proto/kv/v1/kv.proto`.
 ```
 
 The server creates `--data-dir` if it doesn't exist and serves on
-`localhost:port`. `SIGINT` and `SIGTERM` trigger a graceful shutdown with a
-5-second deadline for in-flight RPCs.
+`localhost:port`, where the port must be 1–65535. It exits with an error if the
+port is already in use rather than sharing it with another server. `SIGINT` and
+`SIGTERM` trigger a graceful shutdown with a 5-second deadline for in-flight
+RPCs.
 
 ### Client Usage
 
@@ -153,8 +155,12 @@ for (const auto &[k, v] : pairs) {
 ```
 
 `get()` returns `std::nullopt` if the key is absent or has been deleted. All
-methods throw `std::runtime_error` on RPC failure with the gRPC status code and
-message embedded.
+methods throw `kv::KvStoreError`, a `std::runtime_error` whose `code()` returns
+the gRPC status code, so callers can distinguish `DEADLINE_EXCEEDED` and
+`UNAVAILABLE` from rejected requests. Each RPC has a 5-second deadline by
+default – pass a different `std::chrono::milliseconds` as the constructor's
+second argument to change it. For `scan()`, the deadline covers the whole
+stream.
 
 `scan()` returns a snapshot – concurrent writes / flushes / compactions during
 the scan don't change what it yields. Tombstones are collapsed and shadowed
