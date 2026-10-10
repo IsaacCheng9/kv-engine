@@ -1,6 +1,6 @@
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.17.7"
+version = "0.18.0"
 version_files = [
     "CMakeLists.txt:project\\(kv_engine VERSION"
 ]
