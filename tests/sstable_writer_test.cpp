@@ -12,7 +12,7 @@ namespace {
 
 TEST(SSTableWriterTest, ConstructionWithValidPath) {
   const test::TempDir dir;
-  const std::string path = dir.file("log_file_test");
+  const std::string path = dir.file("sstable");
   EXPECT_NO_THROW(SSTableWriter writer(path));
   EXPECT_TRUE(std::filesystem::exists(path));
 }
