@@ -153,8 +153,12 @@ for (const auto &[k, v] : pairs) {
 ```
 
 `get()` returns `std::nullopt` if the key is absent or has been deleted. All
-methods throw `std::runtime_error` on RPC failure with the gRPC status code and
-message embedded.
+methods throw `kv::KvStoreError`, a `std::runtime_error` whose `code()` returns
+the gRPC status code, so callers can distinguish `DEADLINE_EXCEEDED` and
+`UNAVAILABLE` from rejected requests. Each RPC has a 5-second deadline by
+default – pass a different `std::chrono::milliseconds` as the constructor's
+second argument to change it. For `scan()`, the deadline covers the whole
+stream.
 
 `scan()` returns a snapshot – concurrent writes / flushes / compactions during
 the scan don't change what it yields. Tombstones are collapsed and shadowed
