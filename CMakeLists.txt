@@ -69,7 +69,6 @@ add_library(kv_engine
     src/compaction.cpp
     src/engine.cpp
     src/io_utils.cpp
-    src/log_file.cpp
     src/memtable.cpp
     src/scan_iterator.cpp
     src/sstable_reader.cpp
@@ -115,7 +114,6 @@ set(KV_TEST_SOURCES
     tests/engine_scan_test.cpp
     tests/engine_test.cpp
     tests/io_utils_test.cpp
-    tests/log_file_test.cpp
     tests/memtable_test.cpp
     tests/sstable_reader_test.cpp
     tests/sstable_writer_test.cpp
